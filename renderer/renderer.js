@@ -94,9 +94,16 @@ const elements = {
   sectionsList: document.getElementById('sections-list'),
   
   // Settings Inputs
+  settingsAiProvider: document.getElementById('settings-ai-provider'),
+  settingsGroupGemini: document.getElementById('settings-group-gemini'),
+  settingsGroupOllama: document.getElementById('settings-group-ollama'),
   settingsApiKey: document.getElementById('settings-api-key'),
   settingsApiModel: document.getElementById('settings-api-model'),
   settingsAiStyle: document.getElementById('settings-ai-style'),
+  settingsOllamaUrl: document.getElementById('settings-ollama-url'),
+  settingsOllamaModel: document.getElementById('settings-ollama-model'),
+  btnRefreshOllama: document.getElementById('btn-refresh-ollama'),
+  ollamaStatusText: document.getElementById('ollama-status-text'),
   
   // History Inputs
   compareOldSelect: document.getElementById('compare-old-select'),
@@ -150,18 +157,41 @@ function initApp() {
 }
 
 function loadSettings() {
+  const provider = localStorage.getItem('ai_provider') || 'gemini';
   const apiKey = localStorage.getItem('gemini_api_key') || '';
   const model = localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
   const style = localStorage.getItem('gemini_ai_style') || 'balanced';
+  const ollamaUrl = localStorage.getItem('ollama_url') || 'http://localhost:11434';
+  const ollamaModel = localStorage.getItem('ollama_model') || '';
   const theme = localStorage.getItem('app_theme') || 'dark-theme';
 
+  elements.settingsAiProvider.value = provider;
   elements.settingsApiKey.value = apiKey;
   elements.settingsApiModel.value = model;
   elements.settingsAiStyle.value = style;
+  elements.settingsOllamaUrl.value = ollamaUrl;
   
+  if (ollamaModel) {
+    const opt = new Option(ollamaModel, ollamaModel);
+    elements.settingsOllamaModel.add(opt);
+    elements.settingsOllamaModel.value = ollamaModel;
+  }
+  
+  toggleProviderGroups(provider);
+
   // Apply theme
   document.body.className = theme;
   updateThemeUI(theme);
+}
+
+function toggleProviderGroups(provider) {
+  if (provider === 'gemini') {
+    elements.settingsGroupGemini.classList.remove('hidden');
+    elements.settingsGroupOllama.classList.add('hidden');
+  } else {
+    elements.settingsGroupGemini.classList.add('hidden');
+    elements.settingsGroupOllama.classList.remove('hidden');
+  }
 }
 
 function updateThemeUI(theme) {
@@ -195,6 +225,8 @@ function setupEventListeners() {
   elements.btnGenerateAi.addEventListener('click', generateReadmeContent);
 
   // Settings Panel Actions
+  elements.settingsAiProvider.addEventListener('change', (e) => toggleProviderGroups(e.target.value));
+  elements.btnRefreshOllama.addEventListener('click', fetchOllamaModels);
   elements.btnSaveSettings.addEventListener('click', saveSettings);
   elements.btnResetSettings.addEventListener('click', resetSettings);
 
@@ -560,12 +592,17 @@ async function generateReadmeContent() {
     `;
     elements.previewMarkdownContainer.innerHTML = '<p class="empty-placeholder">Analyzing and generating...</p>';
     
-    const apiKey = elements.settingsApiKey.value.trim();
-    const modelName = elements.settingsApiModel.value;
-    const style = elements.settingsAiStyle.value;
+    const options = {
+      provider: elements.settingsAiProvider.value,
+      apiKey: elements.settingsApiKey.value.trim(),
+      modelName: elements.settingsApiModel.value,
+      style: elements.settingsAiStyle.value,
+      ollamaUrl: elements.settingsOllamaUrl.value.trim(),
+      ollamaModel: elements.settingsOllamaModel.value
+    };
     
     // Call AI (or mock engine)
-    const sections = await generateAIExtractedReadme(state.stats, apiKey, modelName, style);
+    const sections = await generateAIExtractedReadme(state.stats, options);
     
     if (sections && sections.length > 0) {
       state.sections = sections;
@@ -780,8 +817,13 @@ async function submitRegenSection() {
   textarea.disabled = true;
   textarea.value = 'Regenerating section content via AI... Please wait...';
   
-  const apiKey = elements.settingsApiKey.value.trim();
-  const modelName = elements.settingsApiModel.value;
+  const options = {
+    provider: elements.settingsAiProvider.value,
+    apiKey: elements.settingsApiKey.value.trim(),
+    modelName: elements.settingsApiModel.value,
+    ollamaUrl: elements.settingsOllamaUrl.value.trim(),
+    ollamaModel: elements.settingsOllamaModel.value
+  };
   
   const newContent = await regenerateAISection(
     sectionId,
@@ -789,8 +831,7 @@ async function submitRegenSection() {
     section.content,
     state.stats,
     instruction,
-    apiKey,
-    modelName
+    options
   );
   
   textarea.disabled = false;
@@ -1052,23 +1093,58 @@ async function exportAsPdfFile() {
 }
 
 // ----------------- SETTINGS & RESET -----------------
+async function fetchOllamaModels() {
+  const url = elements.settingsOllamaUrl.value.trim().replace(/\/$/, '');
+  elements.ollamaStatusText.textContent = 'Fetching models...';
+  elements.settingsOllamaModel.innerHTML = '';
+  
+  try {
+    const response = await fetch(`${url}/api/tags`);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json();
+    
+    if (data.models && data.models.length > 0) {
+      data.models.forEach(m => {
+        elements.settingsOllamaModel.add(new Option(m.name, m.name));
+      });
+      elements.ollamaStatusText.textContent = `Found ${data.models.length} models.`;
+    } else {
+      elements.settingsOllamaModel.add(new Option('No models installed', ''));
+      elements.ollamaStatusText.textContent = 'No models found in Ollama.';
+    }
+  } catch (error) {
+    elements.settingsOllamaModel.add(new Option('Error connecting', ''));
+    elements.ollamaStatusText.textContent = `Error: Could not connect to Ollama.`;
+    console.error('Ollama fetch error:', error);
+  }
+}
+
 function saveSettings() {
+  const provider = elements.settingsAiProvider.value;
   const key = elements.settingsApiKey.value.trim();
   const model = elements.settingsApiModel.value;
   const style = elements.settingsAiStyle.value;
+  const ollamaUrl = elements.settingsOllamaUrl.value.trim();
+  const ollamaModel = elements.settingsOllamaModel.value;
   
+  localStorage.setItem('ai_provider', provider);
   localStorage.setItem('gemini_api_key', key);
   localStorage.setItem('gemini_model', model);
   localStorage.setItem('gemini_ai_style', style);
+  localStorage.setItem('ollama_url', ollamaUrl);
+  localStorage.setItem('ollama_model', ollamaModel);
   
   alert('Settings saved successfully.');
 }
 
 function resetSettings() {
   if (confirm('Are you sure you want to reset all settings to defaults?')) {
+    localStorage.removeItem('ai_provider');
     localStorage.removeItem('gemini_api_key');
     localStorage.removeItem('gemini_model');
     localStorage.removeItem('gemini_ai_style');
+    localStorage.removeItem('ollama_url');
+    localStorage.removeItem('ollama_model');
     localStorage.removeItem('app_theme');
     
     loadSettings();

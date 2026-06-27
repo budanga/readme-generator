@@ -153,17 +153,17 @@ function getUsageCommand(stats) {
 }
 
 // Main AI Generation Request Function
-async function generateAIExtractedReadme(stats, apiKey, modelName = 'gemini-2.5-flash', aiStyle = 'balanced') {
-  if (!apiKey) {
-    console.log(`No API key provided, returning Mock generated sections with style: ${aiStyle}.`);
-    return generateMockReadme(stats, aiStyle);
+async function generateAIExtractedReadme(stats, options) {
+  if (options.provider === 'gemini' && !options.apiKey) {
+    console.log(`No API key provided, returning Mock generated sections with style: ${options.style}.`);
+    return generateMockReadme(stats, options.style);
   }
 
   // Adjust prompt style instructions based on style choice
   let styleInstruction = "";
-  if (aiStyle === 'concise') {
+  if (options.style === 'concise') {
     styleInstruction = "Make the generated README extremely concise, brief, and direct. Focus only on the absolute essentials (brief description, quick install/run commands, key features). Avoid long paragraphs, wordy descriptions, or unnecessary detail. Use bullet points and keep explanations to 1-2 sentences max.";
-  } else if (aiStyle === 'detailed') {
+  } else if (options.style === 'detailed') {
     styleInstruction = "Make the generated README highly detailed, comprehensive, and technical. Elaborate thoroughly on features, configuration files, directory layout, code design decisions, API sections, and future improvements. Add descriptive paragraphs and explain everything in depth.";
   } else {
     styleInstruction = "Maintain a balanced, standard, and professional level of detail (balanced style).";
@@ -219,73 +219,46 @@ Ensure your JSON output can be directly parsed via JSON.parse(). Double-escape a
 `;
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: prompt
-              }
-            ]
-          }
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json'
-        }
-      })
-    });
+    let resultText = '';
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Gemini API returned error: ${response.status} - ${errorText}`);
+    if (options.provider === 'gemini') {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${options.modelName}:generateContent?key=${options.apiKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: 'application/json' }
+        })
+      });
+      
+      if (!response.ok) throw new Error(`Gemini API returned error: ${response.status} - ${await response.text()}`);
+      const data = await response.json();
+      resultText = data.candidates[0].content.parts[0].text.trim();
+      
+    } else if (options.provider === 'ollama') {
+      if (!options.ollamaModel) throw new Error('No Ollama model selected.');
+      const url = `${options.ollamaUrl.replace(/\/$/, '')}/api/generate`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: options.ollamaModel,
+          prompt: prompt,
+          stream: false,
+          format: 'json'
+        })
+      });
+      
+      if (!response.ok) throw new Error(`Ollama API returned error: ${response.status} - ${await response.text()}`);
+      const data = await response.json();
+      resultText = data.response.trim();
     }
 
-    const data = await response.json();
-
-    // Parse the JSON array of sections
-    let resultText = data.candidates[0].content.parts[0].text.trim();
-
-    // Strip markdown fences if Gemini wrapped the JSON in ```json ... ```
+    // Strip markdown fences if AI wrapped the JSON in ```json ... ```
     resultText = resultText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
 
-    try {
-      const parsedSections = JSON.parse(resultText);
-      if (Array.isArray(parsedSections)) return parsedSections;
-      throw new Error('Response is not a JSON Array');
-    } catch (parseError) {
-      // Repair pass: re-escape unescaped control characters and stray newlines inside JSON strings
-      // This fixes the most common Gemini failure mode where markdown content inside "content" fields
-      // contains literal newlines or unescaped double quotes that break JSON.parse.
-      try {
-        const repaired = resultText.replace(
-          /"content"\s*:\s*"([\s\S]*?)(?=",\s*"(?:id|title)"|}])/g,
-          (match, inner) => {
-            const fixed = inner
-              .replace(/\\/g, '\\\\')   // re-escape backslashes first
-              .replace(/"/g, '\\"')      // escape interior double quotes
-              .replace(/\r?\n/g, '\\n') // escape newlines
-              .replace(/\t/g, '\\t');   // escape tabs
-            return `"content": "${fixed}`;
-          }
-        );
-        const parsedRepaired = JSON.parse(repaired);
-        if (Array.isArray(parsedRepaired)) return parsedRepaired;
-      } catch (_) { /* fall through to full fallback */ }
-
-      // Last resort: try the extractJsonFromString helper
-      console.error('Failed to parse AI JSON response even after repair:', parseError);
-      const cleanJsonStr = extractJsonFromString(resultText);
-      if (cleanJsonStr) {
-        return JSON.parse(cleanJsonStr);
-      }
-      throw parseError;
-    }
+    return parseAndExtractSections(resultText);
   } catch (error) {
     console.error('Gemini API call failed, falling back to mock generator:', error);
     alert(`AI Generation failed (${error.message}). Falling back to Offline Template Mode.`);
@@ -294,8 +267,8 @@ Ensure your JSON output can be directly parsed via JSON.parse(). Double-escape a
 }
 
 // Single section AI regeneration
-async function regenerateAISection(sectionId, sectionTitle, currentContent, stats, instructions, apiKey, modelName = 'gemini-2.5-flash') {
-  if (!apiKey) {
+async function regenerateAISection(sectionId, sectionTitle, currentContent, stats, instructions, options) {
+  if (options.provider === 'gemini' && !options.apiKey) {
     alert('A Gemini API Key is required to regenerate sections with AI.');
     return currentContent;
   }
@@ -320,32 +293,38 @@ Do NOT include the section header (like "## ${sectionTitle}") in your output. Ju
 `;
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: prompt
-              }
-            ]
-          }
-        ]
-      })
-    });
+    let resultText = '';
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+    if (options.provider === 'gemini') {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${options.modelName}:generateContent?key=${options.apiKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      });
+      if (!response.ok) throw new Error(`Gemini API error: ${response.status} - ${await response.text()}`);
+      const data = await response.json();
+      resultText = data.candidates[0].content.parts[0].text;
+      
+    } else if (options.provider === 'ollama') {
+      if (!options.ollamaModel) throw new Error('No Ollama model selected.');
+      const url = `${options.ollamaUrl.replace(/\/$/, '')}/api/generate`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: options.ollamaModel,
+          prompt: prompt,
+          stream: false
+        })
+      });
+      if (!response.ok) throw new Error(`Ollama API error: ${response.status} - ${await response.text()}`);
+      const data = await response.json();
+      resultText = data.response;
     }
 
-    const data = await response.json();
-    const resultText = data.candidates[0].content.parts[0].text;
     return resultText.trim();
   } catch (error) {
     console.error('Failed to regenerate section:', error);
@@ -361,4 +340,109 @@ function extractJsonFromString(str) {
     return str.substring(jsonStart, jsonEnd + 1);
   }
   return null;
+}
+
+function parseAndExtractSections(resultText) {
+  console.log("Raw AI response to parse:", resultText);
+  let cleaned = resultText.trim();
+  
+  // Strip markdown blocks if any
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+  // Helper to extract array from parsed object
+  function extractArray(parsedVal) {
+    if (Array.isArray(parsedVal)) {
+      return parsedVal;
+    }
+    if (parsedVal && typeof parsedVal === 'object') {
+      // Find the first array property (e.g. { "sections": [...] })
+      const arr = Object.values(parsedVal).find(Array.isArray);
+      if (arr) return arr;
+      
+      // If it's a single section object (e.g. { "id": "...", "title": "...", "content": "..." })
+      if (parsedVal.title && parsedVal.content) {
+        return [parsedVal];
+      }
+    }
+    return null;
+  }
+
+  // 1. Try direct parse
+  try {
+    const parsed = JSON.parse(cleaned);
+    const result = extractArray(parsed);
+    if (result) return result;
+  } catch (e) {
+    console.warn("Direct JSON parse failed, trying repair passes...", e);
+  }
+
+  // 2. Try Repair pass (escape stray newlines/quotes inside strings)
+  try {
+    const repaired = cleaned.replace(
+      /"content"\s*:\s*"([\s\S]*?)(?=",\s*"(?:id|title)"|}])/g,
+      (match, inner) => {
+        const fixed = inner
+          .replace(/\\/g, '\\\\')
+          .replace(/"/g, '\\"')
+          .replace(/\r?\n/g, '\\n')
+          .replace(/\t/g, '\\t');
+        return `"content": "${fixed}`;
+      }
+    );
+    const parsed = JSON.parse(repaired);
+    const result = extractArray(parsed);
+    if (result) return result;
+  } catch (e) {
+    console.warn("Repaired JSON parse failed...", e);
+  }
+
+  // 3. Try to extract array [...]
+  const arrayStart = cleaned.indexOf('[');
+  const arrayEnd = cleaned.lastIndexOf(']');
+  if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
+    const arrayStr = cleaned.substring(arrayStart, arrayEnd + 1);
+    try {
+      const parsed = JSON.parse(arrayStr);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (e) {
+      // Try repairing the extracted array substring
+      try {
+        const repairedArray = arrayStr.replace(
+          /"content"\s*:\s*"([\s\S]*?)(?=",\s*"(?:id|title)"|}])/g,
+          (match, inner) => {
+            return `"content": "${inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n').replace(/\t/g, '\\t')}`;
+          }
+        );
+        const parsed = JSON.parse(repairedArray);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (_) {}
+    }
+  }
+
+  // 4. Try to extract object {...}
+  const objStart = cleaned.indexOf('{');
+  const objEnd = cleaned.lastIndexOf('}');
+  if (objStart !== -1 && objEnd !== -1 && objEnd > objStart) {
+    const objStr = cleaned.substring(objStart, objEnd + 1);
+    try {
+      const parsed = JSON.parse(objStr);
+      const result = extractArray(parsed);
+      if (result) return result;
+    } catch (e) {
+      // Try repairing the extracted object substring
+      try {
+        const repairedObj = objStr.replace(
+          /"content"\s*:\s*"([\s\S]*?)(?=",\s*"(?:id|title)"|}])/g,
+          (match, inner) => {
+            return `"content": "${inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n').replace(/\t/g, '\\t')}`;
+          }
+        );
+        const parsed = JSON.parse(repairedObj);
+        const result = extractArray(parsed);
+        if (result) return result;
+      } catch (_) {}
+    }
+  }
+
+  throw new Error("Could not parse AI response as a valid JSON array or object containing sections.");
 }
