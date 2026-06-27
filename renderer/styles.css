@@ -511,6 +511,20 @@ body {
   height: 16px;
 }
 
+#btn-custom-instructions {
+  position: relative;
+}
+
+#btn-custom-instructions .indicator-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  background-color: var(--success-color);
+  border-radius: 50%;
+}
+
 /* View Panels Containers */
 .panel-container {
   flex-grow: 1;

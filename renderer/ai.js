@@ -185,7 +185,7 @@ CRITICAL GUIDELINES:
 9. Whenever a command is outputted, always wrap it inside a fenced markdown code block using triple backticks (i.e. \`\`\`bash ... \`\`\`). Do NOT output commands as plain text or inline code blocks.
 
 Writing Style Instruction:
-${styleInstruction}`;
+${styleInstruction}${options.customInstructions && options.customInstructions.trim() ? `\n\nUSER-SPECIFIED CUSTOM INSTRUCTIONS AND STYLE GUIDELINES (FOLLOW THESE STRICTLY):\n${options.customInstructions.trim()}` : ''}`;
 
   const userPrompt = `Project Name: ${stats.projectName}
 Primary Language: ${stats.primaryLanguage}

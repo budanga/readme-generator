@@ -8,7 +8,9 @@ const state = {
   sections: [], // { id, title, content }
   activeTab: 'dashboard',
   regenSectionId: null,
-  scrollSource: null
+  scrollSource: null,
+  customInstructions: '',
+  customInstructionsEnabled: true
 };
 
 // DOM Elements
@@ -63,6 +65,16 @@ const elements = {
   modalAddClose: document.getElementById('modal-add-close'),
   modalAddCancel: document.getElementById('modal-add-cancel'),
   modalAddSubmit: document.getElementById('modal-add-submit'),
+  
+  // Custom Instructions Modal
+  btnCustomInstructions: document.getElementById('btn-custom-instructions'),
+  instructionsIndicator: document.getElementById('instructions-indicator'),
+  modalCustomInstructions: document.getElementById('modal-custom-instructions'),
+  modalCustomInstructionsInput: document.getElementById('modal-custom-instructions-input'),
+  modalCustomInstructionsEnable: document.getElementById('modal-custom-instructions-enable'),
+  modalCustomInstructionsClose: document.getElementById('modal-custom-instructions-close'),
+  modalCustomInstructionsCancel: document.getElementById('modal-custom-instructions-cancel'),
+  modalCustomInstructionsSave: document.getElementById('modal-custom-instructions-save'),
   
   // Global Info / Stats
   currentProjectName: document.getElementById('current-project-name'),
@@ -165,12 +177,20 @@ function loadSettings() {
   const ollamaUrl = localStorage.getItem('ollama_url') || 'http://localhost:11434';
   const ollamaModel = localStorage.getItem('ollama_model') || '';
   const theme = localStorage.getItem('app_theme') || 'dark-theme';
+  const customInstructions = localStorage.getItem('gemini_custom_instructions') || '';
+  const customInstructionsEnabled = localStorage.getItem('gemini_custom_instructions_enabled') !== 'false';
 
   elements.settingsAiProvider.value = provider;
   elements.settingsApiKey.value = apiKey;
   elements.settingsApiModel.value = model;
   elements.settingsAiStyle.value = style;
   elements.settingsOllamaUrl.value = ollamaUrl;
+  
+  state.customInstructions = customInstructions;
+  state.customInstructionsEnabled = customInstructionsEnabled;
+  elements.modalCustomInstructionsInput.value = customInstructions;
+  elements.modalCustomInstructionsEnable.checked = customInstructionsEnabled;
+  updateInstructionsIndicator();
   
   if (ollamaModel) {
     const opt = new Option(ollamaModel, ollamaModel);
@@ -183,6 +203,19 @@ function loadSettings() {
   // Apply theme
   document.body.className = theme;
   updateThemeUI(theme);
+}
+
+function updateInstructionsIndicator() {
+  if (state.customInstructions && state.customInstructions.trim()) {
+    elements.instructionsIndicator.classList.remove('hidden');
+    if (state.customInstructionsEnabled) {
+      elements.instructionsIndicator.style.backgroundColor = 'var(--success-color)';
+    } else {
+      elements.instructionsIndicator.style.backgroundColor = 'var(--text-muted)';
+    }
+  } else {
+    elements.instructionsIndicator.classList.add('hidden');
+  }
 }
 
 function toggleProviderGroups(provider) {
@@ -265,6 +298,23 @@ function setupEventListeners() {
   elements.modalAddClose.addEventListener('click', () => hideModal(elements.modalAddSection));
   elements.modalAddCancel.addEventListener('click', () => hideModal(elements.modalAddSection));
   elements.modalAddSubmit.addEventListener('click', submitAddSection);
+
+  // Custom Instructions Modal Events
+  elements.btnCustomInstructions.addEventListener('click', () => {
+    elements.modalCustomInstructionsInput.value = state.customInstructions;
+    elements.modalCustomInstructionsEnable.checked = state.customInstructionsEnabled;
+    showModal(elements.modalCustomInstructions);
+  });
+  elements.modalCustomInstructionsClose.addEventListener('click', () => hideModal(elements.modalCustomInstructions));
+  elements.modalCustomInstructionsCancel.addEventListener('click', () => hideModal(elements.modalCustomInstructions));
+  elements.modalCustomInstructionsSave.addEventListener('click', () => {
+    state.customInstructions = elements.modalCustomInstructionsInput.value;
+    state.customInstructionsEnabled = elements.modalCustomInstructionsEnable.checked;
+    localStorage.setItem('gemini_custom_instructions', state.customInstructions);
+    localStorage.setItem('gemini_custom_instructions_enabled', state.customInstructionsEnabled);
+    updateInstructionsIndicator();
+    hideModal(elements.modalCustomInstructions);
+  });
 
   // History Diff
   elements.btnRunCompare.addEventListener('click', compareVersions);
@@ -613,7 +663,8 @@ async function generateReadmeContent() {
       modelName: elements.settingsApiModel.value,
       style: elements.settingsAiStyle.value,
       ollamaUrl: elements.settingsOllamaUrl.value.trim(),
-      ollamaModel: elements.settingsOllamaModel.value
+      ollamaModel: elements.settingsOllamaModel.value,
+      customInstructions: state.customInstructionsEnabled ? (state.customInstructions || '') : ''
     };
     
     // Call AI (or mock engine)
@@ -1171,6 +1222,8 @@ function resetSettings() {
     localStorage.removeItem('ollama_url');
     localStorage.removeItem('ollama_model');
     localStorage.removeItem('app_theme');
+    localStorage.removeItem('gemini_custom_instructions');
+    localStorage.removeItem('gemini_custom_instructions_enabled');
     
     loadSettings();
     alert('Settings reset.');
