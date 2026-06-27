@@ -7,7 +7,8 @@ const state = {
   stats: null,
   sections: [], // { id, title, content }
   activeTab: 'dashboard',
-  regenSectionId: null
+  regenSectionId: null,
+  scrollSource: null
 };
 
 // DOM Elements
@@ -245,6 +246,20 @@ function setupEventListeners() {
   elements.modalRegenClose.addEventListener('click', () => hideModal(elements.modalRegenInstruction));
   elements.modalRegenCancel.addEventListener('click', () => hideModal(elements.modalRegenInstruction));
   elements.modalRegenSubmit.addEventListener('click', submitRegenSection);
+  
+  // Synchronized Scrolling
+  elements.editorSectionsContainer.addEventListener('mouseenter', () => { state.scrollSource = 'editor'; });
+  elements.previewMarkdownContainer.addEventListener('mouseenter', () => { state.scrollSource = 'preview'; });
+  
+  elements.editorSectionsContainer.addEventListener('scroll', () => {
+    if (state.scrollSource !== 'editor') return;
+    syncScrollFromEditorToPreview();
+  });
+  
+  elements.previewMarkdownContainer.addEventListener('scroll', () => {
+    if (state.scrollSource !== 'preview') return;
+    syncScrollFromPreviewToEditor();
+  });
   
   elements.btnAddSection.addEventListener('click', () => showModal(elements.modalAddSection));
   elements.modalAddClose.addEventListener('click', () => hideModal(elements.modalAddSection));
@@ -1254,6 +1269,93 @@ function compareVersions() {
     lineDiv.textContent = prefix + line.text;
     elements.diffOutputContainer.appendChild(lineDiv);
   });
+}
+
+function syncScrollFromEditorToPreview() {
+  const cards = Array.from(elements.editorSectionsContainer.querySelectorAll('.section-card'));
+  const headings = Array.from(elements.previewMarkdownContainer.querySelectorAll('h2'));
+  if (cards.length === 0 || headings.length === 0) return;
+  
+  const containerTop = elements.editorSectionsContainer.getBoundingClientRect().top;
+  const previewTop = elements.previewMarkdownContainer.getBoundingClientRect().top;
+  
+  let topCardIndex = 0;
+  for (let i = 0; i < cards.length; i++) {
+    const rect = cards[i].getBoundingClientRect();
+    if (rect.top - containerTop <= 10) {
+      topCardIndex = i;
+    } else {
+      break;
+    }
+  }
+  
+  const currentCard = cards[topCardIndex];
+  const nextCard = cards[topCardIndex + 1];
+  const currentHeading = headings[topCardIndex];
+  const nextHeading = headings[topCardIndex + 1];
+  
+  if (currentHeading) {
+    const cardRect = currentCard.getBoundingClientRect();
+    const cardTop = cardRect.top - containerTop;
+    const cardHeight = cardRect.height;
+    
+    const progress = cardHeight > 0 ? Math.max(0, Math.min(1, -cardTop / cardHeight)) : 0;
+    
+    const headingTop = currentHeading.getBoundingClientRect().top - previewTop;
+    
+    if (nextHeading && nextCard) {
+      const nextHeadingTop = nextHeading.getBoundingClientRect().top - previewTop;
+      elements.previewMarkdownContainer.scrollTop += (headingTop + progress * (nextHeadingTop - headingTop));
+    } else {
+      elements.previewMarkdownContainer.scrollTop += headingTop;
+    }
+  }
+}
+
+function syncScrollFromPreviewToEditor() {
+  const cards = Array.from(elements.editorSectionsContainer.querySelectorAll('.section-card'));
+  const headings = Array.from(elements.previewMarkdownContainer.querySelectorAll('h2'));
+  if (cards.length === 0 || headings.length === 0) return;
+  
+  const containerTop = elements.editorSectionsContainer.getBoundingClientRect().top;
+  const previewTop = elements.previewMarkdownContainer.getBoundingClientRect().top;
+  
+  let topHeadingIndex = 0;
+  for (let i = 0; i < headings.length; i++) {
+    const rect = headings[i].getBoundingClientRect();
+    if (rect.top - previewTop <= 10) {
+      topHeadingIndex = i;
+    } else {
+      break;
+    }
+  }
+  
+  const currentHeading = headings[topHeadingIndex];
+  const nextHeading = headings[topHeadingIndex + 1];
+  const currentCard = cards[topHeadingIndex];
+  const nextCard = cards[topHeadingIndex + 1];
+  
+  if (currentCard) {
+    const headingRect = currentHeading.getBoundingClientRect();
+    const headingTop = headingRect.top - previewTop;
+    
+    let sectionHeight = headingRect.height;
+    if (nextHeading) {
+      const nextHeadingRect = nextHeading.getBoundingClientRect();
+      sectionHeight = nextHeadingRect.top - headingRect.top;
+    }
+    
+    const progress = sectionHeight > 0 ? Math.max(0, Math.min(1, -headingTop / sectionHeight)) : 0;
+    
+    const cardTop = currentCard.getBoundingClientRect().top - containerTop;
+    
+    if (nextCard && nextHeading) {
+      const nextCardTop = nextCard.getBoundingClientRect().top - containerTop;
+      elements.editorSectionsContainer.scrollTop += (cardTop + progress * (nextCardTop - cardTop));
+    } else {
+      elements.editorSectionsContainer.scrollTop += cardTop;
+    }
+  }
 }
 
 // Boot application
