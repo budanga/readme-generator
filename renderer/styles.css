@@ -829,11 +829,14 @@ body {
   border-radius: 8px;
   overflow: hidden;
   box-shadow: var(--shadow-sm);
-  transition: border-color 0.2s;
+  transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
 }
 
-.section-card:hover {
+.section-card:hover,
+.section-card:focus-within {
   border-color: var(--border-focus);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .section-card-header {
@@ -888,11 +891,14 @@ body {
   line-height: 1.6;
   resize: vertical;
   outline: none;
-  transition: border-color 0.2s;
+  height: 130px;
+  overflow-y: hidden; /* Hide scrollbars during auto-grow */
+  transition: height 0.35s cubic-bezier(0.25, 0.8, 0.25, 1), border-color 0.2s, box-shadow 0.2s;
 }
 
 .section-textarea:focus {
   border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.15);
 }
 
 /* Dropdown styling */

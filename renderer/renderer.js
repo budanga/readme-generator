@@ -638,17 +638,45 @@ function renderEditorCards() {
     
     // Auto-update content in state when textarea changes
     const textarea = card.querySelector('.section-textarea');
+    
+    // Function to adjust height to fit content exactly
+    const adjustHeight = () => {
+      textarea.style.height = 'auto';
+      const newHeight = Math.max(130, textarea.scrollHeight);
+      textarea.style.height = newHeight + 'px';
+    };
+
+    const resetHeight = () => {
+      // If not focused and mouse is not hovering, collapse back to default
+      if (document.activeElement !== textarea && !card.matches(':hover')) {
+        textarea.style.height = '130px';
+      }
+    };
+
     textarea.addEventListener('input', (e) => {
       state.sections[index].content = e.target.value;
-      renderPreview();
+      adjustHeight();
+      debouncedRenderPreview();
     });
     
     // Auto-update title in state when title input changes
     const titleInput = card.querySelector('.section-title-input');
     titleInput.addEventListener('input', (e) => {
       state.sections[index].title = e.target.value;
-      renderPreview();
+      debouncedRenderPreview();
       renderSidebarSectionsList();
+    });
+
+    // Expand/Collapse on focus/blur
+    textarea.addEventListener('focus', adjustHeight);
+    textarea.addEventListener('blur', () => {
+      setTimeout(resetHeight, 100);
+    });
+
+    // Expand/Collapse on hover
+    card.addEventListener('mouseenter', adjustHeight);
+    card.addEventListener('mouseleave', () => {
+      setTimeout(resetHeight, 100);
     });
     
     elements.editorSectionsContainer.appendChild(card);
@@ -824,6 +852,17 @@ function renderPreview() {
   }
 }
 
+// Debounce helper to prevent rapid-fire rendering crashes
+function debounce(func, wait) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+
+const debouncedRenderPreview = debounce(renderPreview, 300);
+
 function renderPreviewMermaidDiagrams() {
   const mermaidCodes = elements.previewMarkdownContainer.querySelectorAll('.mermaid-diagram-code');
   const mermaidPreviews = elements.previewMarkdownContainer.querySelectorAll('.mermaid-preview-container');
@@ -836,12 +875,11 @@ function renderPreviewMermaidDiagrams() {
       const id = 'mermaid-preview-' + index + '-' + Date.now();
       previewEl.innerHTML = `<pre class="mermaid" id="${id}">${diagramCode}</pre>`;
       
-      try {
-        mermaid.run({ nodes: [previewEl.querySelector('.mermaid')] });
-      } catch (err) {
-        console.error('Failed to parse inner markdown mermaid:', err);
-        previewEl.innerHTML = `<span style="font-size:11px;color:red;">Failed to render Mermaid diagram.</span>`;
-      }
+      mermaid.run({ nodes: [previewEl.querySelector('.mermaid')] })
+        .catch(err => {
+          console.error('Failed to parse inner markdown mermaid:', err);
+          previewEl.innerHTML = `<div class="alert-item warning" style="margin:5px 0;font-size:11px;user-select:none;">Failed to render Mermaid diagram (syntax error).</div><pre style="font-size:10px;text-align:left;background:#1a1a20;color:var(--text-main);padding:8px;border-radius:4px;overflow-x:auto;user-select:text;">${diagramCode}</pre>`;
+        });
     }
   });
 }

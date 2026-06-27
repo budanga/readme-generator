@@ -179,6 +179,7 @@ CRITICAL GUIDELINES:
 2. If there is no license, simply write "This project is unlicensed." or state that it is under proprietary terms. Do not say "no license was detected".
 3. Write about the project's tech stack naturally. For example, if HTML is statistically the primary language due to build output/dependency files, but the core logic is in Python, write about it as a Python project without explaining the scan discrepancy.
 4. Avoid meta-commentary. Focus objective language on what the project does, how to install it, and how to use it. Do not explain *why* something is in the README, just write the content directly.
+5. In any generated Mermaid diagram, you MUST wrap node labels containing parentheses, brackets, colons, or other special characters in double quotes. For example, write 'UI["Frontend / UI (Jetpack Compose)"]' instead of 'UI[Frontend / UI (Jetpack Compose)]'. This is absolutely critical to avoid Mermaid parser syntax errors.
 
 Writing Style Instruction:
 ${styleInstruction}
