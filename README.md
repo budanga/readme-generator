@@ -4,7 +4,7 @@ A desktop application for generating README.md files using Electron and JavaScri
 
 ## Description
 
-readme-generator is a lightweight Electron-based application designed to streamline the creation of README.md files. It leverages JavaScript, HTML, and CSS for the frontend, with core logic implemented in the main process. The tool allows users to generate documentation with customizable sections including project description, installation instructions, usage examples, and more.
+readme-generator is a lightweight Electron-based application designed to streamline the creation of README.md files. It leverages JavaScript, HTML, and CSS for the frontend, with core logic implemented in the main process. The tool analyzes your project structure and uses AI to generate structured documentation with customizable sections including project description, installation instructions, usage examples, and more.
 
 ## Key Features
 
@@ -13,6 +13,12 @@ readme-generator is a lightweight Electron-based application designed to streaml
 - **Modular Structure**: Separated renderer and main process code for maintainability
 - **Minimal Dependencies**: Lightweight with no external runtime dependencies beyond Node.js and Electron
 - **Configurable Templates**: Predefined sections for common README components
+
+## Prerequisites
+
+To use the AI generation features, you need one of the following:
+- **Google Gemini**: A Gemini API Key (configured in the app's settings).
+- **Ollama**: A local instance of Ollama running on your machine (defaulting to `http://localhost:11434`) with at least one model downloaded (e.g., `llama3` or `mistral`).
 
 ## Installation Instructions
 

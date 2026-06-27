@@ -706,11 +706,21 @@ function renderEditorCards() {
 
     textarea.addEventListener('input', (e) => {
       state.sections[index].content = e.target.value;
+      
+      // Disable transition and perform instant height update to avoid jitter
       textarea.style.transition = 'none';
       textarea.style.height = '1px';
       const fullHeight = textarea.scrollHeight;
-      textarea.style.transition = '';
       textarea.style.height = fullHeight + 'px';
+      
+      // Force layout reflow to apply the height update instantly without transition
+      textarea.offsetHeight;
+      
+      // Restore transition on the next animation frame
+      requestAnimationFrame(() => {
+        textarea.style.transition = '';
+      });
+      
       debouncedRenderPreview();
     });
 

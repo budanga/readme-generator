@@ -194,8 +194,9 @@ Total Files: ${stats.totalFiles}
 Total Lines of Code (LOC): ${stats.totalLinesOfCode}
 Estimated Complexity: ${stats.complexity}
 Frameworks Detected: ${JSON.stringify(stats.frameworks)}
+Dependencies: ${JSON.stringify(stats.dependencies || [])}
 Package Manager: ${stats.packageManager}
-Entry Point File: ${stats.entryPoint}
+EntryPoint File: ${stats.entryPoint}
 Detected License: ${stats.licenseType}
 Environment Files found: ${JSON.stringify(stats.envFiles)}
 Docker Support: ${stats.hasDocker ? 'Yes' : 'No'}
