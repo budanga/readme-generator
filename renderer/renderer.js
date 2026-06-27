@@ -639,16 +639,25 @@ function renderEditorCards() {
     // Auto-update content in state when textarea changes
     const textarea = card.querySelector('.section-textarea');
     
-    // Function to adjust height to fit content exactly
+    // Function to adjust height to fit content exactly (scrollHeight)
     const adjustHeight = () => {
+      // Temporarily disable transition during measurement to bypass browser layout constraints
+      textarea.style.transition = 'none';
       textarea.style.height = 'auto';
-      const newHeight = Math.max(130, textarea.scrollHeight);
+      
+      const borderHeight = textarea.offsetHeight - textarea.clientHeight;
+      const newHeight = Math.max(130, textarea.scrollHeight + borderHeight + 10); // 10px buffer to prevent any clipping
+      
+      // Restore default CSS transition
+      textarea.style.transition = '';
+      // Apply new height which will trigger the smooth transition from the previous height
       textarea.style.height = newHeight + 'px';
     };
 
     const resetHeight = () => {
       // If not focused and mouse is not hovering, collapse back to default
       if (document.activeElement !== textarea && !card.matches(':hover')) {
+        textarea.style.transition = '';
         textarea.style.height = '130px';
       }
     };
