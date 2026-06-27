@@ -247,18 +247,39 @@ Ensure your JSON output can be directly parsed via JSON.parse(). Double-escape a
     }
 
     const data = await response.json();
-    const resultText = data.candidates[0].content.parts[0].text;
-    
+
     // Parse the JSON array of sections
+    let resultText = data.candidates[0].content.parts[0].text.trim();
+
+    // Strip markdown fences if Gemini wrapped the JSON in ```json ... ```
+    resultText = resultText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
     try {
-      const parsedSections = JSON.parse(resultText.trim());
-      if (Array.isArray(parsedSections)) {
-        return parsedSections;
-      }
+      const parsedSections = JSON.parse(resultText);
+      if (Array.isArray(parsedSections)) return parsedSections;
       throw new Error('Response is not a JSON Array');
     } catch (parseError) {
-      console.error('Failed to parse AI JSON response:', resultText, parseError);
-      // Attempt clean markdown extraction if Gemini didn't format it as pure JSON
+      // Repair pass: re-escape unescaped control characters and stray newlines inside JSON strings
+      // This fixes the most common Gemini failure mode where markdown content inside "content" fields
+      // contains literal newlines or unescaped double quotes that break JSON.parse.
+      try {
+        const repaired = resultText.replace(
+          /"content"\s*:\s*"([\s\S]*?)(?=",\s*"(?:id|title)"|}])/g,
+          (match, inner) => {
+            const fixed = inner
+              .replace(/\\/g, '\\\\')   // re-escape backslashes first
+              .replace(/"/g, '\\"')      // escape interior double quotes
+              .replace(/\r?\n/g, '\\n') // escape newlines
+              .replace(/\t/g, '\\t');   // escape tabs
+            return `"content": "${fixed}`;
+          }
+        );
+        const parsedRepaired = JSON.parse(repaired);
+        if (Array.isArray(parsedRepaired)) return parsedRepaired;
+      } catch (_) { /* fall through to full fallback */ }
+
+      // Last resort: try the extractJsonFromString helper
+      console.error('Failed to parse AI JSON response even after repair:', parseError);
       const cleanJsonStr = extractJsonFromString(resultText);
       if (cleanJsonStr) {
         return JSON.parse(cleanJsonStr);

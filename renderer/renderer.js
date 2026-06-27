@@ -639,36 +639,29 @@ function renderEditorCards() {
     // Auto-update content in state when textarea changes
     const textarea = card.querySelector('.section-textarea');
     
-    // Function to adjust height to fit content exactly (scrollHeight)
-    const adjustHeight = () => {
-      // Temporarily disable transition during measurement to bypass browser layout constraints
-      textarea.style.transition = 'none';
-      textarea.style.height = 'auto';
-      
-      const borderHeight = textarea.offsetHeight - textarea.clientHeight;
-      const newHeight = Math.max(130, textarea.scrollHeight + borderHeight + 10); // 10px buffer to prevent any clipping
-      
-      // Restore default CSS transition
+    const expand = () => {
+      // Read scrollHeight directly — accurate at 130px, no 1px trick needed
+      // This preserves the current visible content so animation grows downward from it
       textarea.style.transition = '';
-      // Apply new height which will trigger the smooth transition from the previous height
-      textarea.style.height = newHeight + 'px';
+      textarea.style.height = textarea.scrollHeight + 'px';
     };
 
-    const resetHeight = () => {
-      // If not focused and mouse is not hovering, collapse back to default
+    const collapse = () => {
       if (document.activeElement !== textarea && !card.matches(':hover')) {
-        textarea.style.transition = '';
         textarea.style.height = '130px';
       }
     };
 
     textarea.addEventListener('input', (e) => {
       state.sections[index].content = e.target.value;
-      adjustHeight();
+      textarea.style.transition = 'none';
+      textarea.style.height = '1px';
+      const fullHeight = textarea.scrollHeight;
+      textarea.style.transition = '';
+      textarea.style.height = fullHeight + 'px';
       debouncedRenderPreview();
     });
-    
-    // Auto-update title in state when title input changes
+
     const titleInput = card.querySelector('.section-title-input');
     titleInput.addEventListener('input', (e) => {
       state.sections[index].title = e.target.value;
@@ -676,16 +669,19 @@ function renderEditorCards() {
       renderSidebarSectionsList();
     });
 
-    // Expand/Collapse on focus/blur
-    textarea.addEventListener('focus', adjustHeight);
-    textarea.addEventListener('blur', () => {
-      setTimeout(resetHeight, 100);
-    });
-
-    // Expand/Collapse on hover
-    card.addEventListener('mouseenter', adjustHeight);
-    card.addEventListener('mouseleave', () => {
-      setTimeout(resetHeight, 100);
+    textarea.addEventListener('focus', expand);
+    textarea.addEventListener('blur', () => setTimeout(collapse, 150));
+    card.addEventListener('mouseenter', expand);
+    card.addEventListener('mouseleave', (e) => {
+      // Guard: during the height CSS transition the card's rendered bottom moves gradually,
+      // which fires a false mouseleave while the mouse is still visually inside the card.
+      // Verify actual pointer position against the card's bounding rect before collapsing.
+      const rect = card.getBoundingClientRect();
+      if (e.clientX >= rect.left && e.clientX <= rect.right &&
+          e.clientY >= rect.top  && e.clientY <= rect.bottom) {
+        return; // Still inside — ignore spurious event
+      }
+      setTimeout(collapse, 150);
     });
     
     elements.editorSectionsContainer.appendChild(card);

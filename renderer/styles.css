@@ -779,6 +779,7 @@ body {
 .editor-cards-column {
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable; /* Reserves scrollbar space permanently — prevents width shift on expand */
   display: flex;
   flex-direction: column;
   gap: 15px;
@@ -827,7 +828,8 @@ body {
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible; /* Must be visible so expanded textarea isn't clipped by card boundary */
+  flex-shrink: 0;   /* Prevent flex from compressing cards when textarea grows */
   box-shadow: var(--shadow-sm);
   transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
 }
@@ -889,11 +891,11 @@ body {
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
-  resize: vertical;
+  resize: none;
   outline: none;
   height: 130px;
-  overflow-y: hidden; /* Hide scrollbars during auto-grow */
-  transition: height 0.35s cubic-bezier(0.25, 0.8, 0.25, 1), border-color 0.2s, box-shadow 0.2s;
+  overflow: hidden;
+  transition: height 0.3s ease, border-color 0.2s, box-shadow 0.2s;
 }
 
 .section-textarea:focus {
