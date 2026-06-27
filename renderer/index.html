@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>README Generator</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="dark-theme"> <!-- Default to dark-theme -->
+  <div class="app-container">
+    
+    <!-- LEFT ACTIVITY BAR (VS Code Style) -->
+    <div class="activity-bar">
+      <div class="logo-area">
+        <svg class="icon logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <div class="activity-items">
+        <div class="activity-item active" id="nav-dashboard" title="Dashboard">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+        </div>
+        <div class="activity-item" id="nav-editor" title="README Editor">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+            <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+          </svg>
+        </div>
+        <div class="activity-item" id="nav-history" title="History & Compare">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        </div>
+        <div class="activity-item" id="nav-settings" title="Settings">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </div>
+      </div>
+      <div class="user-area">
+        <!-- Theme toggle shortcut -->
+        <div id="theme-toggle" class="theme-btn" title="Toggle Light/Dark Theme">
+          <svg class="icon sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECONDARY SIDEBAR (Contextual) -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h3 id="sidebar-title">Project Explorer</h3>
+        <button class="sidebar-collapse-btn" id="btn-select-project" title="Open Project Directory">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span>Open Folder</span>
+        </button>
+      </div>
+      
+      <div class="sidebar-content">
+        <!-- Dashboard Sidebar: Project Tree & Alerts -->
+        <div id="sidebar-dashboard" class="sidebar-pane">
+          <div class="sidebar-section">
+            <h4>Warnings & Alerts</h4>
+            <div id="alerts-container">
+              <p class="empty-placeholder">Select a project folder to start scanning.</p>
+            </div>
+          </div>
+          <div class="sidebar-section">
+            <h4>Project Tree</h4>
+            <div id="tree-container" class="tree-view">
+              <p class="empty-placeholder">No folder loaded.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Editor Sidebar: Sections Manager -->
+        <div id="sidebar-editor" class="sidebar-pane hidden">
+          <div class="sidebar-section">
+            <div class="section-actions-header">
+              <h4>README Sections</h4>
+              <button class="btn btn-sm btn-icon" id="btn-add-section" title="Add Custom Section">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+              </button>
+            </div>
+            <div id="sections-list" class="sections-nav">
+              <p class="empty-placeholder">Generate or load a README first.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- History Sidebar -->
+        <div id="sidebar-history" class="sidebar-pane hidden">
+          <div class="sidebar-section">
+            <h4>Recent Generations</h4>
+            <div id="history-list" class="history-nav">
+              <p class="empty-placeholder">No history found.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings Sidebar -->
+        <div id="sidebar-settings" class="sidebar-pane hidden">
+          <div class="sidebar-section">
+            <h4>Preferences</h4>
+            <div class="menu-list">
+              <div class="menu-item active">API Keys & AI Model</div>
+              <div class="menu-item">Theme Settings</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN VIEW AREA -->
+    <div class="main-content">
+      
+      <!-- TOP STATUS BAR -->
+      <header class="top-bar">
+        <div class="current-path-info">
+          <span class="label">Project:</span>
+          <span class="path-value" id="current-project-name">None loaded</span>
+          <span class="path-full" id="current-project-path"></span>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary btn-icon-text" id="btn-trigger-scan" disabled>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+            </svg>
+            <span>Scan Project</span>
+          </button>
+          <button class="btn btn-accent btn-icon-text" id="btn-generate-ai" disabled>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 2 22 22 22"></polygon>
+            </svg>
+            <span>Generate README</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- VIEW PANELS -->
+      <div class="panel-container">
+        
+        <!-- DASHBOARD VIEW -->
+        <div id="view-dashboard" class="view-pane active">
+          
+          <!-- Welcome Screen (if no folder opened) -->
+          <div id="dashboard-welcome" class="welcome-screen">
+            <svg class="welcome-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+            <h2>README Generator</h2>
+            <p>Automatically analyze local software projects and build production-ready, beautiful READMEs with AI.</p>
+            <button class="btn btn-large btn-primary" id="btn-welcome-select">
+              Select Project Directory
+            </button>
+          </div>
+
+          <!-- Loading overlay -->
+          <div id="dashboard-loading" class="loading-overlay hidden">
+            <div class="spinner"></div>
+            <h3>Scanning Project Structure...</h3>
+            <p>Analyzing files, lines of code, frameworks, and packages.</p>
+          </div>
+
+          <!-- Main Dashboard Stats Panel -->
+          <div id="dashboard-stats" class="dashboard-stats-grid hidden">
+            
+            <!-- Summary Row -->
+            <div class="card summary-card colspan-3">
+              <div class="stats-mini-grid">
+                <div class="stat-item">
+                  <span class="stat-label">Lines of Code</span>
+                  <span class="stat-value" id="stat-loc">0</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Total Files</span>
+                  <span class="stat-value" id="stat-files">0</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Primary Language</span>
+                  <span class="stat-value" id="stat-lang">None</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Framework</span>
+                  <span class="stat-value" id="stat-framework">None</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Language Breakdown -->
+            <div class="card colspan-1">
+              <h3>Languages Used</h3>
+              <div class="languages-chart-container" id="languages-chart">
+                <!-- Dynamic bars go here -->
+              </div>
+            </div>
+
+            <!-- Dependencies -->
+            <div class="card colspan-2">
+              <h3>Dependencies & Package Info</h3>
+              <div class="info-row">
+                <strong>Package Manager:</strong> <span id="stat-package-manager">None</span>
+              </div>
+              <div class="info-row">
+                <strong>Entry Point:</strong> <span id="stat-entry-point">Not detected</span>
+              </div>
+              <div class="dependencies-list" id="stat-dependencies-list">
+                <!-- List values -->
+              </div>
+            </div>
+
+            <!-- Largest Files & Complexity -->
+            <div class="card colspan-1">
+              <h3>Project Complexity</h3>
+              <div class="complexity-gauge">
+                <div class="complexity-score" id="stat-complexity">Low</div>
+                <p>Estimated based on LOC, file hierarchy and dependencies.</p>
+              </div>
+              <h3 style="margin-top: 20px;">Largest Files</h3>
+              <ul class="file-list-simple" id="stat-largest-files">
+                <!-- Large files -->
+              </ul>
+            </div>
+
+            <!-- Architecture Diagram Panel -->
+            <div class="card colspan-2">
+              <h3>Architecture Diagram (Draft)</h3>
+              <div class="mermaid-diagram-viewer" id="architecture-mermaid">
+                <!-- Rendered Mermaid Diagram -->
+              </div>
+            </div>
+            
+          </div>
+        </div>
+
+        <!-- EDITOR VIEW -->
+        <div id="view-editor" class="view-pane">
+          <div class="editor-workspace">
+            
+            <!-- Left Side: Custom Section Editor Cards -->
+            <div class="editor-cards-column" id="editor-sections-container">
+              <!-- Cards for each README section will be dynamically rendered here -->
+            </div>
+
+            <!-- Right Side: Live Markdown Preview (styled like GitHub) -->
+            <div class="editor-preview-column">
+              <div class="preview-header">
+                <h3>Markdown Live Preview</h3>
+                <div class="preview-actions">
+                  <button class="btn btn-sm btn-secondary" id="btn-copy-clipboard">
+                    Copy Markdown
+                  </button>
+                  <div class="dropdown-wrapper">
+                    <button class="btn btn-sm btn-primary" id="btn-export-dropdown">Export...</button>
+                    <div class="dropdown-menu hidden" id="export-dropdown-menu">
+                      <div class="dropdown-item" id="export-file-readme">Save to Project Root (README.md)</div>
+                      <div class="dropdown-item" id="export-file-markdown">Save As Markdown (.md)...</div>
+                      <div class="dropdown-item" id="export-file-html">Export as HTML (.html)...</div>
+                      <div class="dropdown-item" id="export-file-pdf">Export as PDF (.pdf)...</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Preview HTML Container -->
+              <div class="preview-body markdown-body" id="preview-markdown-container">
+                <p class="empty-placeholder">Select project and generate README to view preview.</p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- HISTORY VIEW -->
+        <div id="view-history" class="view-pane">
+          <div class="history-layout">
+            <div class="history-controls">
+              <h3>Compare Generations</h3>
+              <p>Select two versions to view a side-by-side diff comparison.</p>
+              <div class="compare-dropdown-group">
+                <select id="compare-old-select" class="form-control">
+                  <option value="">-- Choose Base Version --</option>
+                </select>
+                <span>vs</span>
+                <select id="compare-new-select" class="form-control">
+                  <option value="">-- Choose Current Version --</option>
+                </select>
+                <button class="btn btn-primary" id="btn-run-compare">Compare</button>
+              </div>
+            </div>
+            
+            <!-- Comparison Diff Viewer -->
+            <div class="diff-viewer-panel">
+              <div class="diff-container" id="diff-output-container">
+                <p class="empty-placeholder">Select versions above and click "Compare" to view line diffs.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SETTINGS VIEW -->
+        <div id="view-settings" class="view-pane">
+          <div class="settings-layout">
+            <h2>Settings</h2>
+            
+            <div class="settings-group">
+              <h3>Gemini API Configuration</h3>
+              <div class="form-group">
+                <label for="settings-api-key">Gemini API Key</label>
+                <input type="password" id="settings-api-key" placeholder="Enter your Gemini API key here..." class="form-control">
+                <span class="help-text">Your key is stored locally in your app's localStorage. Leaving this blank forces the app to run in <strong>Offline Template Mode (Mock)</strong>.</span>
+              </div>
+              
+              <div class="form-group">
+                <label for="settings-api-model">Model Selection</label>
+                <select id="settings-api-model" class="form-control">
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast, Recommended)</option>
+                  <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep Code Reasoning)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="settings-ai-style">AI Writing Style</label>
+                <select id="settings-ai-style" class="form-control">
+                  <option value="balanced">Balanced (Standard Detail)</option>
+                  <option value="concise">Concise (Brief & Direct)</option>
+                  <option value="detailed">Detailed (Comprehensive & Technical)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="settings-group">
+              <h3>Application Settings</h3>
+              <div class="form-group">
+                <label>Theme Mode</label>
+                <div class="theme-selection-grid">
+                  <div class="theme-card active" id="theme-card-dark">
+                    <div class="color-swatch sw-dark"></div>
+                    <span>Dark Theme</span>
+                  </div>
+                  <div class="theme-card" id="theme-card-light">
+                    <div class="color-swatch sw-light"></div>
+                    <span>Light Theme</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-actions">
+              <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
+              <button class="btn btn-secondary" id="btn-reset-settings">Reset Defaults</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- MODAL DIALOGS -->
+  <!-- AI Custom Prompt Instructions Modal -->
+  <div class="modal-backdrop hidden" id="modal-regen-instruction">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Regenerate Section with AI</h3>
+        <button class="btn-close" id="modal-regen-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Input custom instructions for the AI to rewrite the section <strong id="modal-regen-section-title">Section Name</strong>.</p>
+        <div class="form-group">
+          <textarea id="modal-regen-prompt-input" rows="4" class="form-control" placeholder="Example: Make this section more detailed, add a code block showing how to set environment variables, or rewrite in a more friendly tone."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="modal-regen-cancel">Cancel</button>
+        <button class="btn btn-primary" id="modal-regen-submit">Regenerate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Section Modal -->
+  <div class="modal-backdrop hidden" id="modal-add-section">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Add Custom Section</h3>
+        <button class="btn-close" id="modal-add-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="modal-add-title-input">Section Title</label>
+          <input type="text" id="modal-add-title-input" class="form-control" placeholder="e.g. Troubleshooting, Benchmarks, Changelog">
+        </div>
+        <div class="form-group">
+          <label for="modal-add-content-input">Initial Content (Markdown)</label>
+          <textarea id="modal-add-content-input" rows="5" class="form-control" placeholder="Enter markdown content here..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="modal-add-cancel">Cancel</button>
+        <button class="btn btn-primary" id="modal-add-submit">Add Section</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LIBRARY DEPENDENCIES (Local vendor assets) -->
+  <script src="libs/marked.min.js"></script>
+  <script src="libs/mermaid.min.js"></script>
+
+  <!-- APP SCRIPTS -->
+  <script src="history.js"></script>
+  <script src="ai.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
