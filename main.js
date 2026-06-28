@@ -1,7 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, globalShortcut, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { scanProject } = require('./scanner');
+const { generateReadmeContentMain, regenerateAISectionMain } = require('./ai-service');
 
 let mainWindow;
 
@@ -20,11 +22,7 @@ function createWindow() {
     }
   });
 
-  // Load the index.html from renderer folder
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-
-  // Open DevTools in development if needed
-  // mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -35,6 +33,10 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   createWindow();
 
+  globalShortcut.register('CommandOrControl+Shift+I', () => {
+    if (mainWindow) mainWindow.webContents.toggleDevTools();
+  });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -42,10 +44,71 @@ app.whenReady().then(() => {
   });
 });
 
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+});
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+// --- Secure Config Storage Helper ---
+const configPath = path.join(app.getPath('userData'), 'secure_config.json');
+
+function readConfig() {
+  try {
+    if (fs.existsSync(configPath)) {
+      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    }
+  } catch (e) {
+    console.error('Error reading secure config:', e);
+  }
+  return {};
+}
+
+function writeConfig(config) {
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error writing secure config:', e);
+  }
+}
+
+// --- IPC Handlers ---
+
+// Secure key storage handlers
+ipcMain.handle('store-key', async (event, { name, value }) => {
+  const config = readConfig();
+  if (value && safeStorage.isEncryptionAvailable()) {
+    try {
+      const encrypted = safeStorage.encryptString(value);
+      config[name] = encrypted.toString('base64');
+    } catch (e) {
+      console.error('Encryption failed, fallback to plain text:', e);
+      config[name] = value;
+    }
+  } else {
+    config[name] = value;
+  }
+  writeConfig(config);
+  return { success: true };
+});
+
+ipcMain.handle('get-key', async (event, { name }) => {
+  const config = readConfig();
+  const val = config[name];
+  if (!val) return '';
+  if (safeStorage.isEncryptionAvailable()) {
+    try {
+      const buf = Buffer.from(val, 'base64');
+      return safeStorage.decryptString(buf);
+    } catch (e) {
+      return val;
+    }
+  }
+  return val;
 });
 
 // IPC Handler: Folder Selection
@@ -61,11 +124,142 @@ ipcMain.handle('select-folder', async () => {
   return result.filePaths[0];
 });
 
-// IPC Handler: Scan Folder
-ipcMain.handle('scan-project', async (event, folderPath) => {
+let activeScanAbortController = null;
+
+// IPC Handler: Scan Folder with progress & cancellation
+ipcMain.handle('scan-project', async (event, folderPath, modelName) => {
+  if (activeScanAbortController) {
+    activeScanAbortController.abort();
+  }
+  activeScanAbortController = new AbortController();
+  const signal = activeScanAbortController.signal;
+  
   try {
-    const stats = await scanProject(folderPath);
+    const stats = await scanProject(
+      folderPath, 
+      (progressData) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('scan-progress', progressData);
+        }
+      }, 
+      signal,
+      modelName
+    );
     return { success: true, data: stats };
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return { success: false, error: 'Scan cancelled by user', aborted: true };
+    }
+    return { success: false, error: error.message };
+  } finally {
+    activeScanAbortController = null;
+  }
+});
+
+// IPC Handler: Cancel Scan
+ipcMain.handle('cancel-scan', () => {
+  if (activeScanAbortController) {
+    activeScanAbortController.abort();
+    activeScanAbortController = null;
+    return true;
+  }
+  return false;
+});
+
+let activeGenerationAbortController = null;
+
+// IPC Handler: Generate README using AI
+ipcMain.handle('generate-readme', async (event, { stats, options }) => {
+  if (activeGenerationAbortController) {
+    activeGenerationAbortController.abort();
+  }
+  activeGenerationAbortController = new AbortController();
+  const signal = activeGenerationAbortController.signal;
+
+  try {
+    const config = readConfig();
+    const getDecryptedKey = (name) => {
+      const val = config[name];
+      if (!val) return '';
+      if (safeStorage.isEncryptionAvailable()) {
+        try {
+          const buf = Buffer.from(val, 'base64');
+          return safeStorage.decryptString(buf);
+        } catch (e) {
+          return val;
+        }
+      }
+      return val;
+    };
+
+    const apiKey = getDecryptedKey('gemini_api_key');
+    const claudeKey = getDecryptedKey('claude_api_key');
+    const openaiKey = getDecryptedKey('openai_api_key');
+
+    const result = await generateReadmeContentMain(
+      { stats, options, apiKey, claudeKey, openaiKey },
+      (progressTitle, progressDesc) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('generation-progress', { title: progressTitle, desc: progressDesc });
+        }
+      },
+      signal
+    );
+    return result;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return { success: false, error: 'Generation cancelled by user.', aborted: true };
+    }
+    return { success: false, error: error.message };
+  } finally {
+    activeGenerationAbortController = null;
+  }
+});
+
+// IPC Handler: Cancel Generation
+ipcMain.handle('cancel-generation', () => {
+  if (activeGenerationAbortController) {
+    activeGenerationAbortController.abort();
+    activeGenerationAbortController = null;
+    return true;
+  }
+  return false;
+});
+
+// IPC Handler: Regenerate Single Section
+ipcMain.handle('regenerate-section', async (event, { sectionId, sectionTitle, currentContent, stats, instructions, options }) => {
+  try {
+    const config = readConfig();
+    const getDecryptedKey = (name) => {
+      const val = config[name];
+      if (!val) return '';
+      if (safeStorage.isEncryptionAvailable()) {
+        try {
+          const buf = Buffer.from(val, 'base64');
+          return safeStorage.decryptString(buf);
+        } catch (e) {
+          return val;
+        }
+      }
+      return val;
+    };
+
+    const apiKey = getDecryptedKey('gemini_api_key');
+    const claudeKey = getDecryptedKey('claude_api_key');
+    const openaiKey = getDecryptedKey('openai_api_key');
+
+    const result = await regenerateAISectionMain({
+      sectionId,
+      sectionTitle,
+      currentContent,
+      stats,
+      instructions,
+      options,
+      apiKey,
+      claudeKey,
+      openaiKey
+    });
+    return result;
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -102,7 +296,7 @@ ipcMain.handle('save-file-dialog', async (event, { defaultName, content, title, 
   }
 });
 
-// IPC Handler: Export PDF
+// IPC Handler: Export PDF (uses temp file to avoid long URL issues)
 ipcMain.handle('export-pdf-dialog', async (event, { htmlContent, defaultName }) => {
   if (!mainWindow) return { success: false, error: 'No window' };
   
@@ -116,7 +310,6 @@ ipcMain.handle('export-pdf-dialog', async (event, { htmlContent, defaultName }) 
     return { success: false, canceled: true };
   }
 
-  // Create an invisible BrowserWindow to render HTML and print to PDF
   let printWindow = new BrowserWindow({
     show: false,
     webPreferences: {
@@ -125,7 +318,6 @@ ipcMain.handle('export-pdf-dialog', async (event, { htmlContent, defaultName }) 
     }
   });
 
-  // Load standard styling inside printWindow
   const formattedHtml = `
     <html>
       <head>
@@ -193,8 +385,12 @@ ipcMain.handle('export-pdf-dialog', async (event, { htmlContent, defaultName }) 
     </html>
   `;
 
+  const tempFilePath = path.join(os.tmpdir(), `readme-export-${Date.now()}.html`);
+
   try {
-    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(formattedHtml)}`);
+    fs.writeFileSync(tempFilePath, formattedHtml, 'utf8');
+    await printWindow.loadFile(tempFilePath);
+    
     const pdfData = await printWindow.webContents.printToPDF({
       margins: { top: 36, bottom: 36, left: 36, right: 36 },
       pageSize: 'A4',
@@ -202,12 +398,19 @@ ipcMain.handle('export-pdf-dialog', async (event, { htmlContent, defaultName }) 
     });
     
     fs.writeFileSync(result.filePath, pdfData);
-    printWindow.close();
-    printWindow = null;
     return { success: true, filePath: result.filePath };
   } catch (error) {
-    if (printWindow) printWindow.close();
     return { success: false, error: error.message };
+  } finally {
+    if (fs.existsSync(tempFilePath)) {
+      try {
+        fs.unlinkSync(tempFilePath);
+      } catch (e) {}
+    }
+    if (printWindow) {
+      printWindow.close();
+      printWindow = null;
+    }
   }
 });
 

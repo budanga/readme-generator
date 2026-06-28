@@ -49,6 +49,15 @@ async function testScanner() {
       }
     }
 
+    console.log('\n--- EXTRACTED KEY FILES ---');
+    if (stats.keyFiles && stats.keyFiles.length > 0) {
+      stats.keyFiles.forEach(kf => {
+        console.log(`- ${kf.path} (Length: ${kf.content.length} chars, EntryPoint: ${kf.isEntryPoint})`);
+      });
+    } else {
+      console.log('None');
+    }
+
     console.log('\n--- MERMAID DIAGRAM ---');
     console.log(stats.architectureDiagram);
 

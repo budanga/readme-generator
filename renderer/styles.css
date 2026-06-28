@@ -502,8 +502,18 @@ body {
 }
 
 .btn-icon {
-  padding: 6px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-sm.btn-icon {
+  width: 26px;
+  height: 26px;
 }
 
 .btn-icon-text svg {
@@ -517,10 +527,10 @@ body {
 
 #btn-custom-instructions .indicator-dot {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 6px;
-  height: 6px;
+  top: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
   background-color: var(--success-color);
   border-radius: 50%;
 }
@@ -965,6 +975,12 @@ body {
 }
 
 .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.provider-group {
   display: flex;
   flex-direction: column;
   gap: 15px;

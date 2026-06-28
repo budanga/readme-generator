@@ -76,6 +76,30 @@ const elements = {
   modalCustomInstructionsCancel: document.getElementById('modal-custom-instructions-cancel'),
   modalCustomInstructionsSave: document.getElementById('modal-custom-instructions-save'),
   
+  // Error Modal
+  modalError: document.getElementById('modal-error'),
+  modalErrorTitle: document.getElementById('modal-error-title'),
+  modalErrorMessage: document.getElementById('modal-error-message'),
+  modalErrorDetails: document.getElementById('modal-error-details'),
+  modalErrorClose: document.getElementById('modal-error-close'),
+  modalErrorCloseBtn: document.getElementById('modal-error-close-btn'),
+  modalErrorCopy: document.getElementById('modal-error-copy'),
+  modalErrorCopyText: document.getElementById('modal-error-copy-text'),
+  
+  // Consent Modal
+  modalConsent: document.getElementById('modal-consent'),
+  modalConsentClose: document.getElementById('modal-consent-close'),
+  modalConsentCancel: document.getElementById('modal-consent-cancel'),
+  modalConsentConfirm: document.getElementById('modal-consent-confirm'),
+  consentProvider: document.getElementById('consent-provider'),
+  consentModel: document.getElementById('consent-model'),
+  consentChars: document.getElementById('consent-chars'),
+  consentFilesList: document.getElementById('consent-files-list'),
+  
+  // Cancel Scan Button
+  btnCancelScan: document.getElementById('btn-cancel-scan'),
+  scanProgressStatus: document.getElementById('scan-progress-status'),
+  
   // Global Info / Stats
   currentProjectName: document.getElementById('current-project-name'),
   currentProjectPath: document.getElementById('current-project-path'),
@@ -109,9 +133,15 @@ const elements = {
   // Settings Inputs
   settingsAiProvider: document.getElementById('settings-ai-provider'),
   settingsGroupGemini: document.getElementById('settings-group-gemini'),
+  settingsGroupClaude: document.getElementById('settings-group-claude'),
+  settingsGroupOpenai: document.getElementById('settings-group-openai'),
   settingsGroupOllama: document.getElementById('settings-group-ollama'),
   settingsApiKey: document.getElementById('settings-api-key'),
   settingsApiModel: document.getElementById('settings-api-model'),
+  settingsClaudeKey: document.getElementById('settings-claude-key'),
+  settingsClaudeModel: document.getElementById('settings-claude-model'),
+  settingsOpenaiKey: document.getElementById('settings-openai-key'),
+  settingsOpenaiModel: document.getElementById('settings-openai-model'),
   settingsAiStyle: document.getElementById('settings-ai-style'),
   settingsOllamaUrl: document.getElementById('settings-ollama-url'),
   settingsOllamaModel: document.getElementById('settings-ollama-model'),
@@ -163,19 +193,43 @@ if (window.marked) {
 }
 
 // ----------------- INITS & APP ROUTING -----------------
-function initApp() {
-  loadSettings();
+async function initApp() {
+  await loadSettings();
   setupEventListeners();
   updateHistoryViews();
 }
 
-function loadSettings() {
+async function loadSettings() {
   const provider = localStorage.getItem('ai_provider') || 'gemini';
-  const apiKey = localStorage.getItem('gemini_api_key') || '';
+  
+  // Retrieve keys from main process secure config, fall back to / migrate from localStorage
+  let apiKey = await window.api.getKey('gemini_api_key');
+  if (!apiKey && localStorage.getItem('gemini_api_key')) {
+    apiKey = localStorage.getItem('gemini_api_key');
+    await window.api.saveKey('gemini_api_key', apiKey);
+    localStorage.removeItem('gemini_api_key');
+  }
+
+  let claudeKey = await window.api.getKey('claude_api_key');
+  if (!claudeKey && localStorage.getItem('claude_api_key')) {
+    claudeKey = localStorage.getItem('claude_api_key');
+    await window.api.saveKey('claude_api_key', claudeKey);
+    localStorage.removeItem('claude_api_key');
+  }
+
+  let openaiKey = await window.api.getKey('openai_api_key');
+  if (!openaiKey && localStorage.getItem('openai_api_key')) {
+    openaiKey = localStorage.getItem('openai_api_key');
+    await window.api.saveKey('openai_api_key', openaiKey);
+    localStorage.removeItem('openai_api_key');
+  }
+
   const model = localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
   const style = localStorage.getItem('gemini_ai_style') || 'balanced';
   const ollamaUrl = localStorage.getItem('ollama_url') || 'http://localhost:11434';
   const ollamaModel = localStorage.getItem('ollama_model') || '';
+  const claudeModel = localStorage.getItem('claude_model') || 'claude-sonnet-4-5';
+  const openaiModel = localStorage.getItem('openai_model') || 'gpt-4o';
   const theme = localStorage.getItem('app_theme') || 'dark-theme';
   const customInstructions = localStorage.getItem('gemini_custom_instructions') || '';
   const customInstructionsEnabled = localStorage.getItem('gemini_custom_instructions_enabled') !== 'false';
@@ -185,6 +239,10 @@ function loadSettings() {
   elements.settingsApiModel.value = model;
   elements.settingsAiStyle.value = style;
   elements.settingsOllamaUrl.value = ollamaUrl;
+  elements.settingsClaudeKey.value = claudeKey;
+  elements.settingsClaudeModel.value = claudeModel;
+  elements.settingsOpenaiKey.value = openaiKey;
+  elements.settingsOpenaiModel.value = openaiModel;
   
   state.customInstructions = customInstructions;
   state.customInstructionsEnabled = customInstructionsEnabled;
@@ -193,6 +251,7 @@ function loadSettings() {
   updateInstructionsIndicator();
   
   if (ollamaModel) {
+    elements.settingsOllamaModel.innerHTML = '';
     const opt = new Option(ollamaModel, ollamaModel);
     elements.settingsOllamaModel.add(opt);
     elements.settingsOllamaModel.value = ollamaModel;
@@ -219,13 +278,12 @@ function updateInstructionsIndicator() {
 }
 
 function toggleProviderGroups(provider) {
-  if (provider === 'gemini') {
-    elements.settingsGroupGemini.classList.remove('hidden');
-    elements.settingsGroupOllama.classList.add('hidden');
-  } else {
-    elements.settingsGroupGemini.classList.add('hidden');
-    elements.settingsGroupOllama.classList.remove('hidden');
-  }
+  const allGroups = [elements.settingsGroupGemini, elements.settingsGroupClaude, elements.settingsGroupOpenai, elements.settingsGroupOllama];
+  allGroups.forEach(g => g.classList.add('hidden'));
+  if (provider === 'gemini') elements.settingsGroupGemini.classList.remove('hidden');
+  else if (provider === 'claude') elements.settingsGroupClaude.classList.remove('hidden');
+  else if (provider === 'openai') elements.settingsGroupOpenai.classList.remove('hidden');
+  else if (provider === 'ollama') elements.settingsGroupOllama.classList.remove('hidden');
 }
 
 function updateThemeUI(theme) {
@@ -254,9 +312,21 @@ function setupEventListeners() {
   elements.btnSelectProject.addEventListener('click', selectFolder);
   elements.btnWelcomeSelect.addEventListener('click', selectFolder);
   elements.btnTriggerScan.addEventListener('click', scanCurrentFolder);
+  elements.btnCancelScan.addEventListener('click', async () => {
+    elements.scanProgressStatus.textContent = 'Cancelling scan...';
+    await window.api.cancelScan();
+  });
   
   // AI README Generation
   elements.btnGenerateAi.addEventListener('click', generateReadmeContent);
+
+  // Consent Modal Actions
+  elements.modalConsentClose.addEventListener('click', () => hideModal(elements.modalConsent));
+  elements.modalConsentCancel.addEventListener('click', () => hideModal(elements.modalConsent));
+  elements.modalConsentConfirm.addEventListener('click', () => {
+    hideModal(elements.modalConsent);
+    executeReadmeGeneration();
+  });
 
   // Settings Panel Actions
   elements.settingsAiProvider.addEventListener('change', (e) => toggleProviderGroups(e.target.value));
@@ -315,6 +385,30 @@ function setupEventListeners() {
     updateInstructionsIndicator();
     hideModal(elements.modalCustomInstructions);
   });
+
+  // Error Modal Events
+  if (elements.modalErrorClose) {
+    elements.modalErrorClose.addEventListener('click', () => hideModal(elements.modalError));
+  }
+  if (elements.modalErrorCloseBtn) {
+    elements.modalErrorCloseBtn.addEventListener('click', () => hideModal(elements.modalError));
+  }
+  if (elements.modalErrorCopy && elements.modalErrorDetails) {
+    elements.modalErrorCopy.addEventListener('click', async () => {
+      try {
+        const textToCopy = `Error: ${elements.modalErrorMessage.textContent}\n\nDetails:\n${elements.modalErrorDetails.value}`;
+        await navigator.clipboard.writeText(textToCopy);
+        if (elements.modalErrorCopyText) {
+          elements.modalErrorCopyText.textContent = 'Copied!';
+          setTimeout(() => {
+            elements.modalErrorCopyText.textContent = 'Copy Error';
+          }, 2000);
+        }
+      } catch (err) {
+        console.error('Failed to copy error details to clipboard:', err);
+      }
+    });
+  }
 
   // History Diff
   elements.btnRunCompare.addEventListener('click', compareVersions);
@@ -402,9 +496,28 @@ async function scanCurrentFolder() {
   elements.dashboardWelcome.classList.add('hidden');
   elements.dashboardStats.classList.add('hidden');
   elements.dashboardLoading.classList.remove('hidden');
+  elements.scanProgressStatus.textContent = 'Starting project file analysis...';
   
-  const result = await window.api.scanProject(state.projectPath);
+  // Set up scan progress listener from main process
+  const removeScanListener = window.api.onScanProgress((data) => {
+    if (data.file === 'Done') {
+      elements.scanProgressStatus.textContent = `Completed scan. Preparing dashboard...`;
+    } else {
+      elements.scanProgressStatus.textContent = `Scanned ${data.count} files. Scanning: ${data.file}`;
+    }
+  });
+
+  // Determine current model name to calculate token budgets
+  const provider = elements.settingsAiProvider.value;
+  let modelName = '';
+  if (provider === 'gemini') modelName = elements.settingsApiModel.value;
+  else if (provider === 'claude') modelName = elements.settingsClaudeModel.value;
+  else if (provider === 'openai') modelName = elements.settingsOpenaiModel.value;
+  else if (provider === 'ollama') modelName = elements.settingsOllamaModel.value;
+
+  const result = await window.api.scanProject(state.projectPath, modelName);
   
+  removeScanListener();
   elements.dashboardLoading.classList.add('hidden');
   
   if (result.success) {
@@ -412,7 +525,11 @@ async function scanCurrentFolder() {
     displayDashboardStats(result.data);
     elements.dashboardStats.classList.remove('hidden');
   } else {
-    alert(`Scanning failed: ${result.error}`);
+    if (result.aborted) {
+      console.log('Project scan was cancelled by the user.');
+    } else {
+      alert(`Scanning failed: ${result.error}`);
+    }
     elements.dashboardWelcome.classList.remove('hidden');
   }
 }
@@ -639,23 +756,85 @@ async function createGitignoreFile() {
 }
 
 // ----------------- AI README GENERATOR -----------------
-async function generateReadmeContent() {
+// Show consent modal before transmission
+function generateReadmeContent() {
+  if (!state.stats) {
+    alert('Please select and scan a project folder first.');
+    return;
+  }
+
+  const provider = elements.settingsAiProvider.value;
+  let modelName = '';
+  if (provider === 'gemini') modelName = elements.settingsApiModel.value;
+  else if (provider === 'claude') modelName = elements.settingsClaudeModel.value;
+  else if (provider === 'openai') modelName = elements.settingsOpenaiModel.value;
+  else if (provider === 'ollama') modelName = elements.settingsOllamaModel.value;
+
+  elements.consentProvider.textContent = provider.toUpperCase();
+  elements.consentModel.textContent = modelName || 'Default';
+
+  // Populate file list and calculate total characters
+  elements.consentFilesList.innerHTML = '';
+  let totalChars = 0;
+  if (state.stats.keyFiles && state.stats.keyFiles.length > 0) {
+    state.stats.keyFiles.forEach(file => {
+      totalChars += file.content.length;
+      const fileRow = document.createElement('div');
+      fileRow.style.display = 'flex';
+      fileRow.style.justifyContent = 'space-between';
+      fileRow.style.width = '100%';
+      fileRow.innerHTML = `<span>${file.path}</span> <span style="color: var(--text-muted); font-size: 11px;">(${file.content.length.toLocaleString()} chars)</span>`;
+      elements.consentFilesList.appendChild(fileRow);
+    });
+  } else {
+    elements.consentFilesList.innerHTML = '<div style="color: var(--text-muted); font-style: italic;">No key files will be transmitted.</div>';
+  }
+  
+  elements.consentChars.textContent = `${totalChars.toLocaleString()} chars (~${Math.round(totalChars / 4).toLocaleString()} tokens)`;
+
+  // Show the modal
+  showModal(elements.modalConsent);
+}
+
+async function executeReadmeGeneration() {
   if (!state.stats) {
     alert('Please select and scan a project folder first.');
     return;
   }
   
+  const originalSpan = elements.btnGenerateAi.querySelector('span');
+  const originalText = originalSpan ? originalSpan.textContent : 'Generate README';
+  
+  elements.btnGenerateAi.disabled = true;
+  if (originalSpan) {
+    originalSpan.textContent = 'Generating...';
+  }
+  
   try {
-    // Switch to Editor Tab and show loading preview
+    // Switch to Editor Tab and show loading preview with Cancel button
     switchTab('editor');
     elements.editorSectionsContainer.innerHTML = `
       <div class="loading-overlay">
         <div class="spinner"></div>
-        <h3>Generating README Sections using AI...</h3>
-        <p>This may take up to a minute depending on the model and project size.</p>
+        <h3 id="generation-status-title">Generating README Sections using AI...</h3>
+        <p id="generation-status-desc">This may take up to a minute depending on the model and project size.</p>
+        <button id="btn-cancel-generation" class="btn btn-secondary" style="margin-top: 16px;">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+          <span>Cancel</span>
+        </button>
       </div>
     `;
     elements.previewMarkdownContainer.innerHTML = '<p class="empty-placeholder">Analyzing and generating...</p>';
+
+    const cancelBtn = document.getElementById('btn-cancel-generation');
+    cancelBtn.addEventListener('click', async () => {
+      cancelBtn.disabled = true;
+      cancelBtn.querySelector('span').textContent = 'Cancelling...';
+      await window.api.cancelGeneration();
+    });
     
     const options = {
       provider: elements.settingsAiProvider.value,
@@ -664,6 +843,10 @@ async function generateReadmeContent() {
       style: elements.settingsAiStyle.value,
       ollamaUrl: elements.settingsOllamaUrl.value.trim(),
       ollamaModel: elements.settingsOllamaModel.value,
+      claudeKey: elements.settingsClaudeKey.value.trim(),
+      claudeModel: elements.settingsClaudeModel.value,
+      openaiKey: elements.settingsOpenaiKey.value.trim(),
+      openaiModel: elements.settingsOpenaiModel.value,
       customInstructions: state.customInstructionsEnabled ? (state.customInstructions || '') : ''
     };
     
@@ -681,17 +864,36 @@ async function generateReadmeContent() {
       renderSidebarSectionsList();
       renderPreview();
       updateHistoryViews();
-    } else {
-      alert('Failed to generate README. Try again or check your settings.');
+    } else if (sections !== null) {
+      // null means cancelled — sections === undefined/[] means real failure
+      window.showCustomErrorModal(
+        'README Generation Failed',
+        'Failed to generate README. The AI provider did not return any sections.',
+        'Please verify your API key, local model status, connection settings, and project scan stats.'
+      );
       elements.editorSectionsContainer.innerHTML = '<p class="empty-placeholder">Failed to load editor sections.</p>';
+      switchTab('dashboard');
+    } else {
+      // Cancelled by user — restore dashboard quietly
+      elements.editorSectionsContainer.innerHTML = '<p class="empty-placeholder">Generation was cancelled.</p>';
       switchTab('dashboard');
     }
   } catch (error) {
     console.error('Error generating README:', error);
-    alert(`An error occurred while generating the README:\n${error.stack || error.message}`);
+    window.showCustomErrorModal(
+      'README Generation Error',
+      'An unexpected error occurred while generating the README.',
+      error
+    );
     switchTab('dashboard');
+  } finally {
+    elements.btnGenerateAi.disabled = false;
+    if (originalSpan) {
+      originalSpan.textContent = originalText;
+    }
   }
 }
+
 
 // ----------------- EDITOR LOGIC -----------------
 function renderEditorCards() {
@@ -726,10 +928,16 @@ function renderEditorCards() {
           <button class="btn btn-sm btn-icon nav-arrow-btn" onclick="moveSection(${index}, 1)" title="Move Down">
             ▼
           </button>
+          <button class="btn btn-sm btn-icon" onclick="copySectionContent(${index})" title="Copy Section Content">
+            <svg class="icon text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
           <button class="btn btn-sm btn-primary btn-icon-text" onclick="triggerRegenAIModal('${section.id}', '${section.title}')" title="Regenerate with AI">
             AI Regen
           </button>
-          <button class="btn btn-sm btn-danger btn-icon" onclick="deleteSection(${index})" title="Delete Section">
+          <button class="btn btn-sm btn-danger btn-icon" style="line-height: 0; padding-bottom: 2px; display: inline-flex; align-items: center; justify-content: center; font-size: 18px;" onclick="deleteSection(${index})" title="Delete Section">
             &times;
           </button>
         </div>
@@ -858,6 +1066,26 @@ window.deleteSection = function(index) {
   }
 };
 
+window.copySectionContent = async function(index) {
+  try {
+    await navigator.clipboard.writeText(state.sections[index].content);
+    
+    // Provide visual feedback
+    const card = document.getElementById(`editor-card-${state.sections[index].id}`);
+    if (card) {
+      const copyBtn = card.querySelector('button[title="Copy Section Content"]');
+      if (copyBtn) {
+        const originalHTML = copyBtn.innerHTML;
+        copyBtn.innerHTML = '<svg class="icon text-success" style="stroke: #10b981;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+        setTimeout(() => { copyBtn.innerHTML = originalHTML; }, 1500);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to copy text: ', err);
+    alert('Failed to copy section content.');
+  }
+};
+
 window.triggerRegenAIModal = function(sectionId, sectionTitle) {
   state.regenSectionId = sectionId;
   elements.modalRegenSectionTitle.textContent = sectionTitle;
@@ -873,6 +1101,35 @@ function showModal(modal) {
 function hideModal(modal) {
   modal.classList.add('hidden');
 }
+
+window.showCustomErrorModal = function(title, message, details) {
+  let detailsText = '';
+  if (details) {
+    if (details instanceof Error) {
+      detailsText = details.stack || details.toString();
+    } else if (typeof details === 'object') {
+      try {
+        detailsText = JSON.stringify(details, null, 2);
+      } catch (_) {
+        detailsText = String(details);
+      }
+    } else {
+      detailsText = String(details);
+    }
+  }
+
+  if (elements.modalError && elements.modalErrorTitle && elements.modalErrorMessage && elements.modalErrorDetails) {
+    elements.modalErrorTitle.textContent = title || 'Error Details';
+    elements.modalErrorMessage.textContent = message || 'An error occurred during execution.';
+    elements.modalErrorDetails.value = detailsText || 'No technical details available.';
+    if (elements.modalErrorCopyText) {
+      elements.modalErrorCopyText.textContent = 'Copy Error';
+    }
+    showModal(elements.modalError);
+  } else {
+    alert(`${title || 'Error'}\n\n${message || ''}\n\n${detailsText}`);
+  }
+};
 
 async function submitRegenSection() {
   const sectionId = state.regenSectionId;
@@ -898,7 +1155,11 @@ async function submitRegenSection() {
     apiKey: elements.settingsApiKey.value.trim(),
     modelName: elements.settingsApiModel.value,
     ollamaUrl: elements.settingsOllamaUrl.value.trim(),
-    ollamaModel: elements.settingsOllamaModel.value
+    ollamaModel: elements.settingsOllamaModel.value,
+    claudeKey: elements.settingsClaudeKey.value.trim(),
+    claudeModel: elements.settingsClaudeModel.value,
+    openaiKey: elements.settingsOpenaiKey.value.trim(),
+    openaiModel: elements.settingsOpenaiModel.value
   };
   
   const newContent = await regenerateAISection(
@@ -1195,38 +1456,64 @@ async function fetchOllamaModels() {
   }
 }
 
-function saveSettings() {
+async function saveSettings() {
   const provider = elements.settingsAiProvider.value;
   const key = elements.settingsApiKey.value.trim();
   const model = elements.settingsApiModel.value;
   const style = elements.settingsAiStyle.value;
   const ollamaUrl = elements.settingsOllamaUrl.value.trim();
   const ollamaModel = elements.settingsOllamaModel.value;
+  const claudeKey = elements.settingsClaudeKey.value.trim();
+  const claudeModel = elements.settingsClaudeModel.value;
+  const openaiKey = elements.settingsOpenaiKey.value.trim();
+  const openaiModel = elements.settingsOpenaiModel.value;
   
   localStorage.setItem('ai_provider', provider);
-  localStorage.setItem('gemini_api_key', key);
   localStorage.setItem('gemini_model', model);
   localStorage.setItem('gemini_ai_style', style);
   localStorage.setItem('ollama_url', ollamaUrl);
   localStorage.setItem('ollama_model', ollamaModel);
+  localStorage.setItem('claude_model', claudeModel);
+  localStorage.setItem('openai_model', openaiModel);
   
-  alert('Settings saved successfully.');
+  // Save credentials securely in main process
+  await window.api.saveKey('gemini_api_key', key);
+  await window.api.saveKey('claude_api_key', claudeKey);
+  await window.api.saveKey('openai_api_key', openaiKey);
+  
+  // Ensure unencrypted versions are removed from localStorage
+  localStorage.removeItem('gemini_api_key');
+  localStorage.removeItem('claude_api_key');
+  localStorage.removeItem('openai_api_key');
+  
+  alert('Settings saved securely.');
 }
 
-function resetSettings() {
+async function resetSettings() {
   if (confirm('Are you sure you want to reset all settings to defaults?')) {
     localStorage.removeItem('ai_provider');
-    localStorage.removeItem('gemini_api_key');
     localStorage.removeItem('gemini_model');
     localStorage.removeItem('gemini_ai_style');
     localStorage.removeItem('ollama_url');
     localStorage.removeItem('ollama_model');
+    localStorage.removeItem('claude_model');
+    localStorage.removeItem('openai_model');
     localStorage.removeItem('app_theme');
     localStorage.removeItem('gemini_custom_instructions');
     localStorage.removeItem('gemini_custom_instructions_enabled');
     
-    loadSettings();
-    alert('Settings reset.');
+    // Clear unencrypted storage keys just in case
+    localStorage.removeItem('gemini_api_key');
+    localStorage.removeItem('claude_api_key');
+    localStorage.removeItem('openai_api_key');
+
+    // Reset secure keys
+    await window.api.saveKey('gemini_api_key', '');
+    await window.api.saveKey('claude_api_key', '');
+    await window.api.saveKey('openai_api_key', '');
+    
+    await loadSettings();
+    alert('Settings reset to defaults successfully.');
   }
 }
 

@@ -53,10 +53,51 @@ const EXTENSION_MAP = {
   '.csproj': 'C# Project'
 };
 
+// Primary programming language extensions we want to prioritize reading for logic context
+const PRIMARY_CODE_EXTENSIONS = new Set([
+  '.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.cpp', '.c', '.cs', '.go', '.rs', '.rb', '.php', '.swift', '.kt', '.dart', '.scala', '.groovy'
+]);
+
+const SENSITIVE_PATTERNS = [
+  /\.env($|\.)/i, /secret/i, /credential/i, /password/i,
+  /private[_-]?key/i, /\.pem$/i, /\.p12$/i, /id_rsa/i,
+  /\.pfx$/i, /auth.*config/i
+];
+
 // Check if file is a code/text file we care to count LOC for
 function isCodeFile(filePath) {
   const ext = path.extname(filePath).toLowerCase();
   return ext in EXTENSION_MAP;
+}
+
+// Sniff first 512 bytes for null byte to detect binary files
+async function isBinaryFile(filePath) {
+  let fileHandle;
+  try {
+    fileHandle = await fs.promises.open(filePath, 'r');
+    const buf = Buffer.alloc(512);
+    const { bytesRead } = await fileHandle.read(buf, 0, 512, 0);
+    for (let i = 0; i < bytesRead; i++) {
+      if (buf[i] === 0) return true;
+    }
+  } catch (e) {
+    return true; // Treat as binary if unreadable
+  } finally {
+    if (fileHandle) {
+      await fileHandle.close();
+    }
+  }
+  return false;
+}
+
+// Heuristic check for minified content
+function isMinifiedContent(content) {
+  const lines = content.split(/\r?\n/);
+  // Check first 5 lines
+  for (let i = 0; i < Math.min(lines.length, 5); i++) {
+    if (lines[i].length > 500) return true;
+  }
+  return false;
 }
 
 // Function to run a shell command safely inside a promise
@@ -73,7 +114,7 @@ function runCommand(command, cwd) {
 }
 
 // Main Scan function
-async function scanProject(projectPath) {
+async function scanProject(projectPath, onProgress, signal) {
   const stats = {
     projectName: path.basename(projectPath),
     projectPath,
@@ -102,6 +143,83 @@ async function scanProject(projectPath) {
     architectureDiagram: ''
   };
 
+  const OBVIOUS_FILES_TO_OMIT = new Set([
+    '.gitignore',
+    'readme.md',
+    'readme.txt',
+    'readme',
+    '.gitattributes',
+    '.ds_store',
+    'package-lock.json',
+    'yarn.lock',
+    'pnpm-lock.yaml',
+    'cargo.lock',
+    'gemfile.lock',
+    'go.sum',
+    '.env',
+    '.env.local',
+    '.env.development',
+    '.env.test',
+    '.env.production'
+  ]);
+
+  // Read gitignore rules
+  const gitignorePath = path.join(projectPath, '.gitignore');
+  let gitignoreRules = [];
+  if (fs.existsSync(gitignorePath)) {
+    try {
+      gitignoreRules = fs.readFileSync(gitignorePath, 'utf8')
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#'));
+    } catch (e) {
+      console.error('Error reading gitignore:', e);
+    }
+  }
+
+  // Precompile gitignore rules for performance and correctness
+  const precompiledGitignoreRules = gitignoreRules.map(rule => {
+    try {
+      let cleanRule = rule;
+      let matchDirOnly = false;
+      if (cleanRule.endsWith('/')) {
+        cleanRule = cleanRule.slice(0, -1);
+        matchDirOnly = true;
+      }
+      
+      let regexStr = cleanRule
+        .replace(/[-\/\\^$+?.()|[\]{}]/g, '\\$&') // escape regex characters except *
+        .replace(/\\\*/g, '.*')
+        .replace(/\\\?/g, '.');
+        
+      if (cleanRule.startsWith('/')) {
+        regexStr = '^' + regexStr.slice(2);
+      } else {
+        regexStr = '(^|\\/)' + regexStr;
+      }
+      
+      regexStr += '(\\/|$)';
+      
+      const regex = new RegExp(regexStr);
+      return { rule, regex, matchDirOnly };
+    } catch (e) {
+      return null;
+    }
+  }).filter(Boolean);
+
+  function isPathIgnored(absolutePath, isDir = false) {
+    const relativePath = path.relative(projectPath, absolutePath).replace(/\\/g, '/');
+    if (!relativePath) return false;
+    
+    for (const rule of precompiledGitignoreRules) {
+      if (rule.matchDirOnly && !isDir) continue;
+      if (rule.regex.test(relativePath)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // Check Git usage
   const gitPath = path.join(projectPath, '.git');
   if (fs.existsSync(gitPath)) {
@@ -118,14 +236,21 @@ async function scanProject(projectPath) {
 
   // Temporary list to find largest files
   const fileList = [];
+  const candidateFiles = [];
+  const visitedPaths = new Set();
   
-  // Tree building helper
-  function buildTree(dirPath, depth = 0) {
+  // Tree building helper (Async)
+  async function buildTree(dirPath, depth = 0) {
+    if (signal && signal.aborted) {
+      const err = new Error('Scan aborted');
+      err.name = 'AbortError';
+      throw err;
+    }
     if (depth > 3) return null; // limit depth to 3 for projectTree
     
     let items;
     try {
-      items = fs.readdirSync(dirPath);
+      items = await fs.promises.readdir(dirPath);
     } catch (e) {
       return null;
     }
@@ -134,15 +259,29 @@ async function scanProject(projectPath) {
     for (const item of items) {
       if (IGNORED_FOLDERS.has(item)) continue;
       const fullPath = path.join(dirPath, item);
+      
+      // Gitignore check
+      if (isPathIgnored(fullPath, true)) continue;
+
+      // Omit obvious configuration/meta files from the tree
+      if (OBVIOUS_FILES_TO_OMIT.has(item.toLowerCase())) continue;
+
       let isDir = false;
+      let stat;
       try {
-        isDir = fs.statSync(fullPath).isDirectory();
+        stat = await fs.promises.lstat(fullPath);
+        if (stat.isSymbolicLink()) {
+          const realPath = await fs.promises.realpath(fullPath);
+          if (visitedPaths.has(realPath)) continue;
+          stat = await fs.promises.stat(fullPath);
+        }
+        isDir = stat.isDirectory();
       } catch (e) {
         continue;
       }
 
       if (isDir) {
-        const children = buildTree(fullPath, depth + 1);
+        const children = await buildTree(fullPath, depth + 1);
         nodes.push({
           name: item,
           type: 'directory',
@@ -155,6 +294,7 @@ async function scanProject(projectPath) {
         });
       }
     }
+    
     // Sort directories first, then files alphabetically
     nodes.sort((a, b) => {
       if (a.type !== b.type) {
@@ -168,29 +308,61 @@ async function scanProject(projectPath) {
   stats.projectTree = {
     name: stats.projectName,
     type: 'directory',
-    children: buildTree(projectPath, 0)
+    children: await buildTree(projectPath, 0)
   };
 
-  // Recursive folder scanner
-  function walkDir(dirPath) {
+  // Recursive folder scanner (Async, Non-Blocking)
+  async function walkDir(dirPath, depth = 0) {
+    if (signal && signal.aborted) {
+      const err = new Error('Scan aborted');
+      err.name = 'AbortError';
+      throw err;
+    }
+
+    if (depth > 25) return; // Prevent stack overflow on extremely deep structures
+
     let items;
     try {
-      items = fs.readdirSync(dirPath);
+      items = await fs.promises.readdir(dirPath);
     } catch (e) {
       return;
     }
 
+    // Yield control to Node event loop
+    await new Promise(resolve => setImmediate(resolve));
+
     for (const item of items) {
+      if (signal && signal.aborted) {
+        const err = new Error('Scan aborted');
+        err.name = 'AbortError';
+        throw err;
+      }
+
       if (IGNORED_FOLDERS.has(item)) continue;
       const fullPath = path.join(dirPath, item);
       let stat;
       try {
-        stat = fs.statSync(fullPath);
+        stat = await fs.promises.lstat(fullPath);
       } catch (e) {
         continue;
       }
 
+      // Cycle & Symlink Protection
+      if (stat.isSymbolicLink()) {
+        try {
+          const realPath = await fs.promises.realpath(fullPath);
+          if (visitedPaths.has(realPath)) continue;
+          visitedPaths.add(realPath);
+          stat = await fs.promises.stat(fullPath);
+        } catch (e) {
+          continue; // broken symlink
+        }
+      }
+
       if (stat.isDirectory()) {
+        // Gitignore check for directory
+        if (isPathIgnored(fullPath, true)) continue;
+
         // Look for CI/CD directories
         if (item === '.github' && fs.existsSync(path.join(fullPath, 'workflows'))) {
           stats.ciCd.push('GitHub Actions');
@@ -199,18 +371,19 @@ async function scanProject(projectPath) {
         }
         
         // Walk subdirectory
-        walkDir(fullPath);
+        await walkDir(fullPath, depth + 1);
       } else {
-        stats.totalFiles++;
+        const isIgnoredFile = isPathIgnored(fullPath, false);
         const ext = path.extname(item).toLowerCase();
+        const relPath = path.relative(projectPath, fullPath);
         
-        // Detect Config Files
+        // Detect Config Files (store full relative path)
         const lowerItem = item.toLowerCase();
         if ([
           'package.json', 'pyproject.toml', 'requirements.txt', 'cargo.toml',
           'go.mod', 'pom.xml', 'build.gradle', 'composer.json', 'csproj'
         ].some(config => lowerItem.endsWith(config)) || ext === '.csproj') {
-          stats.configFiles.push(item);
+          stats.configFiles.push(relPath);
         }
 
         // Environment files
@@ -243,7 +416,7 @@ async function scanProject(projectPath) {
         if (lowerItem.startsWith('license')) {
           stats.hasLicense = true;
           try {
-            const licContent = fs.readFileSync(fullPath, 'utf8').substring(0, 1000);
+            const licContent = (await fs.promises.readFile(fullPath, 'utf8')).substring(0, 1000);
             if (licContent.includes('MIT License') || licContent.includes('MIT')) {
               stats.licenseType = 'MIT';
             } else if (licContent.includes('Apache License 2.0') || licContent.includes('Apache')) {
@@ -260,25 +433,28 @@ async function scanProject(projectPath) {
           }
         }
 
+        // Only count tracked/non-ignored files for statistics and LOC!
+        if (isIgnoredFile) continue;
+
         // Docs files
         if (ext === '.md' && item !== 'README.md' && !IGNORED_FOLDERS.has(path.basename(dirPath))) {
           stats.docFiles.push({
             name: item,
-            path: path.relative(projectPath, fullPath)
+            path: relPath
           });
         }
 
         // Check if test file
-        if (
+        const isTestFile = (
           lowerItem.includes('test') || 
           lowerItem.includes('spec') || 
           dirPath.includes('test') || 
           dirPath.includes('tests') || 
           dirPath.includes('__tests__')
-        ) {
-          if (isCodeFile(fullPath)) {
-            stats.hasTests = true;
-          }
+        );
+
+        if (isTestFile && isCodeFile(fullPath)) {
+          stats.hasTests = true;
         }
 
         // Check for test coverage artifacts
@@ -291,19 +467,21 @@ async function scanProject(projectPath) {
           stats.testCoverage.files.push(item);
         }
 
-        // Language & LOC calculation
-        if (isCodeFile(fullPath)) {
+        // Language & LOC calculation (avoid binary sniffing unless it matches extensions)
+        const isBinary = await isBinaryFile(fullPath);
+        if (isCodeFile(fullPath) && !isBinary) {
           const lang = EXTENSION_MAP[ext] || 'Unknown';
           let loc = 0;
+          let content = '';
           
           try {
             // Read file only if under 2MB for LOC count
             if (stat.size < 2 * 1024 * 1024) {
-              const content = fs.readFileSync(fullPath, 'utf8');
+              content = await fs.promises.readFile(fullPath, 'utf8');
               loc = content.split('\n').length;
             }
           } catch (e) {
-            // Unreadable / binary files
+            // Unreadable / error
           }
 
           if (!stats.languages[lang]) {
@@ -313,17 +491,68 @@ async function scanProject(projectPath) {
           stats.languages[lang].loc += loc;
           stats.totalLinesOfCode += loc;
 
+          stats.totalFiles++;
+          if (onProgress && (stats.totalFiles % 10 === 0 || stats.totalFiles === 1)) {
+            onProgress({ file: relPath, count: stats.totalFiles });
+          }
+
           fileList.push({
-            path: path.relative(projectPath, fullPath),
+            path: relPath,
             size: stat.size,
             loc: loc
           });
+
+          const lowerRelPath = relPath.toLowerCase().replace(/\\/g, '/');
+          
+          const isAssetPath = (
+            lowerRelPath.includes('/res/drawable') ||
+            lowerRelPath.startsWith('res/drawable') ||
+            lowerRelPath.includes('/res/mipmap') ||
+            lowerRelPath.startsWith('res/mipmap') ||
+            lowerRelPath.includes('/res/color') ||
+            lowerRelPath.startsWith('res/color') ||
+            lowerRelPath.includes('/assets/') ||
+            lowerRelPath.startsWith('assets/') ||
+            lowerRelPath.includes('/public/') ||
+            lowerRelPath.startsWith('public/')
+          );
+
+          // Skip lockfiles, license files, env files, sensitive files, readmes, and assets
+          const isSensitive = SENSITIVE_PATTERNS.some(p => p.test(item) || p.test(relPath));
+          const isSkipContent = (
+            lowerItem === 'package-lock.json' ||
+            lowerItem === 'yarn.lock' ||
+            lowerItem === 'pnpm-lock.yaml' ||
+            lowerItem === 'cargo.lock' ||
+            lowerItem === 'composer.lock' ||
+            lowerItem === 'gemfile.lock' ||
+            lowerItem === 'go.sum' ||
+            lowerItem === 'readme.md' ||
+            lowerItem.startsWith('.env') ||
+            lowerItem.startsWith('license') ||
+            isAssetPath ||
+            isSensitive
+          );
+
+          const isMinified = isMinifiedContent(content);
+
+          if (!isTestFile && !isSkipContent && !isMinified) {
+            const relativeDir = path.relative(projectPath, dirPath);
+            const depth = relativeDir ? relativeDir.split(path.sep).filter(Boolean).length : 0;
+            candidateFiles.push({
+              path: relPath,
+              fullPath: fullPath,
+              size: stat.size,
+              loc: loc,
+              depth: depth
+            });
+          }
         }
       }
     }
   }
 
-  walkDir(projectPath);
+  await walkDir(projectPath);
 
   // Set missing alerts
   stats.hasReadme = fs.existsSync(path.join(projectPath, 'README.md')) || fs.existsSync(path.join(projectPath, 'readme.md'));
@@ -342,7 +571,7 @@ async function scanProject(projectPath) {
     const lowerConfig = configFile.toLowerCase();
     
     try {
-      if (lowerConfig === 'package.json') {
+      if (lowerConfig.endsWith('package.json')) {
         stats.packageManager = 'npm';
         const content = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
         
@@ -366,10 +595,9 @@ async function scanProject(projectPath) {
         if (allDeps.includes('electron')) stats.frameworks.push('Electron');
       }
       
-      else if (lowerConfig === 'cargo.toml') {
+      else if (lowerConfig.endsWith('cargo.toml')) {
         stats.packageManager = 'Cargo';
         const content = fs.readFileSync(fullPath, 'utf8');
-        // Simple regex parse for Cargo
         const depSection = content.split('[dependencies]');
         if (depSection.length > 1) {
           const lines = depSection[1].split('[')[0].split('\n');
@@ -384,7 +612,7 @@ async function scanProject(projectPath) {
         stats.frameworks.push('Rust Cargo');
       }
 
-      else if (lowerConfig === 'pyproject.toml') {
+      else if (lowerConfig.endsWith('pyproject.toml')) {
         stats.packageManager = 'Poetry/Pipenv';
         const content = fs.readFileSync(fullPath, 'utf8');
         if (content.includes('django') || content.includes('Django')) stats.frameworks.push('Django');
@@ -392,7 +620,7 @@ async function scanProject(projectPath) {
         if (content.includes('fastapi') || content.includes('FastAPI')) stats.frameworks.push('FastAPI');
       }
 
-      else if (lowerConfig === 'requirements.txt') {
+      else if (lowerConfig.endsWith('requirements.txt')) {
         stats.packageManager = 'pip';
         const content = fs.readFileSync(fullPath, 'utf8');
         const lines = content.split('\n');
@@ -402,7 +630,6 @@ async function scanProject(projectPath) {
             const depName = line.split('==')[0].split('>=')[0].trim();
             stats.dependencies.push(depName);
             
-            // Check framework from requirements
             const lowerDep = depName.toLowerCase();
             if (lowerDep === 'django') stats.frameworks.push('Django');
             if (lowerDep === 'flask') stats.frameworks.push('Flask');
@@ -411,7 +638,7 @@ async function scanProject(projectPath) {
         }
       }
 
-      else if (lowerConfig === 'go.mod') {
+      else if (lowerConfig.endsWith('go.mod')) {
         stats.packageManager = 'Go Modules';
         const content = fs.readFileSync(fullPath, 'utf8');
         const lines = content.split('\n');
@@ -428,7 +655,7 @@ async function scanProject(projectPath) {
         if (content.includes('github.com/astaxie/beego')) stats.frameworks.push('Beego');
       }
 
-      else if (lowerConfig === 'composer.json') {
+      else if (lowerConfig.endsWith('composer.json')) {
         stats.packageManager = 'Composer';
         const content = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
         if (content.require) {
@@ -439,15 +666,15 @@ async function scanProject(projectPath) {
         if (allDeps.some(d => d.includes('symfony'))) stats.frameworks.push('Symfony');
       }
 
-      else if (lowerConfig === 'pom.xml' || lowerConfig === 'build.gradle') {
-        stats.packageManager = lowerConfig === 'pom.xml' ? 'Maven' : 'Gradle';
+      else if (lowerConfig.endsWith('pom.xml') || lowerConfig.endsWith('build.gradle')) {
+        stats.packageManager = lowerConfig.endsWith('pom.xml') ? 'Maven' : 'Gradle';
         const content = fs.readFileSync(fullPath, 'utf8');
         if (content.includes('spring-boot') || content.includes('springboot')) {
           stats.frameworks.push('Spring Boot');
         }
       }
 
-      else if (lowerConfig.endsWith('.csproj') || lowerConfig === 'csproj') {
+      else if (lowerConfig.endsWith('.csproj') || lowerConfig.endsWith('csproj')) {
         stats.packageManager = 'NuGet';
         const content = fs.readFileSync(fullPath, 'utf8');
         if (content.includes('Microsoft.NET.Sdk')) {
@@ -478,7 +705,6 @@ async function scanProject(projectPath) {
   // If no framework detected, guess from languages
   if (stats.frameworks.length === 0) {
     if (primaryLang === 'Python') {
-      // Check if we can find python frameworks
       if (stats.dependencies.includes('django')) stats.frameworks.push('Django');
       else if (stats.dependencies.includes('flask')) stats.frameworks.push('Flask');
       else if (stats.dependencies.includes('fastapi')) stats.frameworks.push('FastAPI');
@@ -507,7 +733,6 @@ async function scanProject(projectPath) {
     }
   }
   if (!stats.entryPoint) {
-    // Look for any file with name main or index in root or src/
     try {
       const rootFiles = fs.readdirSync(projectPath);
       const found = rootFiles.find(f => f.toLowerCase().startsWith('index.') || f.toLowerCase().startsWith('main.'));
@@ -523,7 +748,6 @@ async function scanProject(projectPath) {
   if (!stats.entryPoint) stats.entryPoint = 'Not detected';
 
   // Estimate Complexity
-  // Formula: Low: < 20 files & < 2000 LOC, Medium: < 150 files & < 15000 LOC, High: else
   if (stats.totalFiles > 150 || stats.totalLinesOfCode > 15000) {
     stats.complexity = 'High';
   } else if (stats.totalFiles > 20 || stats.totalLinesOfCode > 2000) {
@@ -533,7 +757,6 @@ async function scanProject(projectPath) {
   }
 
   // Generate Mermaid Architecture Diagram code
-  // We'll create a dynamic top-level block diagram based on detected features
   let diagram = 'graph TD\n';
   diagram += '  User([User/Client]) --> UI[Frontend / UI]\n';
   
@@ -556,7 +779,6 @@ async function scanProject(projectPath) {
     diagram += '  Routing --> Logic[Business Logic / Services]\n';
     diagram += '  Logic --> DB[(Database / Storage)]\n';
   } else {
-    // Simple script diagram
     diagram += `  UI --> Entry[Entry Point: ${stats.entryPoint}]\n`;
     diagram += '  Entry --> Modules[Helper Modules / Libs]\n';
   }
@@ -568,6 +790,122 @@ async function scanProject(projectPath) {
   }
   
   stats.architectureDiagram = diagram;
+
+  // Extract key file contents for richer LLM context
+  stats.keyFiles = [];
+  const normalizedEntryPoint = stats.entryPoint !== 'Not detected' ? path.normalize(stats.entryPoint).replace(/\\/g, '/') : null;
+
+  for (const file of candidateFiles) {
+    const normalizedPath = file.path.replace(/\\/g, '/');
+    file.isEntryPoint = !!(normalizedEntryPoint && normalizedPath === normalizedEntryPoint);
+  }
+
+  candidateFiles.sort((a, b) => {
+    if (a.isEntryPoint && !b.isEntryPoint) return -1;
+    if (!a.isEntryPoint && b.isEntryPoint) return 1;
+
+    const extA = path.extname(a.path).toLowerCase();
+    const extB = path.extname(b.path).toLowerCase();
+    const aIsPrimary = PRIMARY_CODE_EXTENSIONS.has(extA);
+    const bIsPrimary = PRIMARY_CODE_EXTENSIONS.has(extB);
+    if (aIsPrimary && !bIsPrimary) return -1;
+    if (!aIsPrimary && bIsPrimary) return 1;
+    
+    const coreDirs = ['src/', 'lib/', 'app/', 'core/', 'components/'];
+    const aPath = a.path.replace(/\\/g, '/').toLowerCase();
+    const bPath = b.path.replace(/\\/g, '/').toLowerCase();
+    
+    const aInCore = coreDirs.some(dir => aPath.startsWith(dir));
+    const bInCore = coreDirs.some(dir => bPath.startsWith(dir));
+    if (aInCore && !bInCore) return -1;
+    if (!aInCore && bInCore) return 1;
+
+    const isConfigPattern = (p) => {
+      const name = path.basename(p);
+      return name.includes('config.') || 
+             name.includes('setup.') || 
+             name.startsWith('.') ||
+             name.includes('test') || 
+             name.includes('spec') ||
+             ['gulpfile.js', 'gruntfile.js', 'postcss.js'].some(c => name.includes(c));
+    };
+    const aIsConfig = isConfigPattern(aPath);
+    const bIsConfig = isConfigPattern(bPath);
+    if (aIsConfig && !bIsConfig) return 1;
+    if (!aIsConfig && bIsConfig) return -1;
+
+    if (a.depth !== b.depth) {
+      return a.depth - b.depth;
+    }
+    
+    return b.size - a.size;
+  });
+
+  const dirGroups = new Map();
+  for (const file of candidateFiles) {
+    const dir = path.dirname(file.path).replace(/\\/g, '/');
+    if (!dirGroups.has(dir)) {
+      dirGroups.set(dir, []);
+    }
+    dirGroups.get(dir).push(file);
+  }
+
+  const diverseCandidates = [];
+  const groupIterators = Array.from(dirGroups.values());
+  let hasMore = true;
+  let cycleIdx = 0;
+  
+  while (hasMore && diverseCandidates.length < candidateFiles.length) {
+    hasMore = false;
+    for (const group of groupIterators) {
+      if (cycleIdx < group.length) {
+        diverseCandidates.push(group[cycleIdx]);
+        hasMore = true;
+      }
+    }
+    cycleIdx++;
+  }
+
+  const MAX_KEY_FILES = 6;
+  const MAX_FILE_CHARS = 15000;
+  const TOTAL_CHAR_BUDGET = 80000;
+  
+  let totalCharsRead = 0;
+  let filesReadCount = 0;
+
+  for (const file of diverseCandidates) {
+    if (filesReadCount >= MAX_KEY_FILES || totalCharsRead >= TOTAL_CHAR_BUDGET) {
+      break;
+    }
+
+    try {
+      if (fs.existsSync(file.fullPath)) {
+        let content = fs.readFileSync(file.fullPath, 'utf8');
+        let isTruncated = false;
+
+        if (content.length > MAX_FILE_CHARS) {
+          content = content.substring(0, MAX_FILE_CHARS);
+          isTruncated = true;
+        }
+
+        if (file.isEntryPoint || totalCharsRead + content.length <= TOTAL_CHAR_BUDGET + 10000) {
+          stats.keyFiles.push({
+            path: file.path,
+            content: content + (isTruncated ? '\n\n# ... [TRUNCATED FOR BREVITY] ...' : ''),
+            isEntryPoint: file.isEntryPoint
+          });
+          totalCharsRead += content.length;
+          filesReadCount++;
+        }
+      }
+    } catch (e) {
+      console.error(`Failed to read candidate file content: ${file.path}`, e);
+    }
+  }
+
+  if (onProgress) {
+    onProgress({ file: 'Done', count: stats.totalFiles });
+  }
 
   return stats;
 }
