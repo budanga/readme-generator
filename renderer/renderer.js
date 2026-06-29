@@ -224,7 +224,7 @@ async function loadSettings() {
     localStorage.removeItem('openai_api_key');
   }
 
-  const model = localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
+  const model = localStorage.getItem('gemini_model') || 'gemini-3.5-flash';
   const style = localStorage.getItem('gemini_ai_style') || 'balanced';
   const ollamaUrl = localStorage.getItem('ollama_url') || 'http://localhost:11434';
   const ollamaModel = localStorage.getItem('ollama_model') || '';
@@ -319,6 +319,28 @@ function setupEventListeners() {
   
   // AI README Generation
   elements.btnGenerateAi.addEventListener('click', generateReadmeContent);
+
+  const toggleBtn = document.getElementById('btn-toggle-thinking');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const thinkingContainer = document.getElementById('editor-thinking-container');
+      const sectionsContainer = elements.editorSectionsContainer;
+      const btnSpan = toggleBtn.querySelector('span');
+      if (thinkingContainer && sectionsContainer && btnSpan) {
+        if (thinkingContainer.style.display === 'none') {
+          // Switch to thinking logs view
+          sectionsContainer.style.display = 'none';
+          thinkingContainer.style.display = 'block';
+          btnSpan.textContent = 'Show Sections';
+        } else {
+          // Switch to sections cards view
+          thinkingContainer.style.display = 'none';
+          sectionsContainer.style.display = 'flex';
+          btnSpan.textContent = 'Show AI Thoughts';
+        }
+      }
+    });
+  }
 
   // Consent Modal Actions
   elements.modalConsentClose.addEventListener('click', () => hideModal(elements.modalConsent));
@@ -811,6 +833,21 @@ async function executeReadmeGeneration() {
   }
   
   try {
+    window._lastThinkingLogs = null;
+    // Hide the thinking containers and reset toggle button when starting generation
+    const toggleContainer = document.getElementById('thinking-toggle-container');
+    const thinkingContainer = document.getElementById('editor-thinking-container');
+    const toggleBtn = document.getElementById('btn-toggle-thinking');
+    if (toggleContainer) toggleContainer.style.display = 'none';
+    if (thinkingContainer) {
+      thinkingContainer.style.display = 'none';
+      thinkingContainer.textContent = '';
+    }
+    if (toggleBtn) {
+      const btnSpan = toggleBtn.querySelector('span');
+      if (btnSpan) btnSpan.textContent = 'Show AI Thoughts';
+    }
+
     // Switch to Editor Tab and show loading preview with Cancel button
     switchTab('editor');
     elements.editorSectionsContainer.innerHTML = `
@@ -864,6 +901,35 @@ async function executeReadmeGeneration() {
       renderSidebarSectionsList();
       renderPreview();
       updateHistoryViews();
+
+      // Show/Hide thinking toggle and text based on window._lastThinkingLogs
+      const toggleContainer = document.getElementById('thinking-toggle-container');
+      const thinkingContainer = document.getElementById('editor-thinking-container');
+      const toggleBtn = document.getElementById('btn-toggle-thinking');
+
+      if (window._lastThinkingLogs && window._lastThinkingLogs.trim()) {
+        if (toggleContainer) toggleContainer.style.display = 'block';
+        if (thinkingContainer) {
+          thinkingContainer.textContent = window._lastThinkingLogs;
+          thinkingContainer.style.display = 'none';
+        }
+        if (elements.editorSectionsContainer) {
+          elements.editorSectionsContainer.style.display = 'flex';
+        }
+        if (toggleBtn) {
+          const btnSpan = toggleBtn.querySelector('span');
+          if (btnSpan) btnSpan.textContent = 'Show AI Thoughts';
+        }
+      } else {
+        if (toggleContainer) toggleContainer.style.display = 'none';
+        if (thinkingContainer) {
+          thinkingContainer.style.display = 'none';
+          thinkingContainer.textContent = '';
+        }
+        if (elements.editorSectionsContainer) {
+          elements.editorSectionsContainer.style.display = 'flex';
+        }
+      }
     } else if (sections !== null) {
       // null means cancelled — sections === undefined/[] means real failure
       window.showCustomErrorModal(

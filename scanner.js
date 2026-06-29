@@ -140,7 +140,9 @@ async function scanProject(projectPath, onProgress, signal) {
     docFiles: [], // { name, path }
     projectTree: null,
     complexity: 'Low',
-    architectureDiagram: ''
+    architectureDiagram: '',
+    screenshots: [],
+    logos: []
   };
 
   const OBVIOUS_FILES_TO_OMIT = new Set([
@@ -435,6 +437,34 @@ async function scanProject(projectPath, onProgress, signal) {
 
         // Only count tracked/non-ignored files for statistics and LOC!
         if (isIgnoredFile) continue;
+
+        // Detect screenshots and logo/icon images
+        const imageExtensions = ['.png', '.jpg', '.jpeg', '.webp', '.svg', '.gif', '.ico'];
+        if (imageExtensions.includes(ext)) {
+          const lowerItem = item.toLowerCase();
+          const lowerRelPath = relPath.toLowerCase().replace(/\\/g, '/');
+          
+          const isScreenshot = (
+            lowerItem.includes('screenshot') ||
+            lowerItem.includes('screen-shot') ||
+            lowerItem.includes('capture') ||
+            lowerRelPath.includes('/screenshots/') ||
+            lowerRelPath.startsWith('screenshots/')
+          );
+          
+          const isIconOrLogo = (
+            lowerItem.includes('logo') ||
+            lowerItem.includes('icon') ||
+            lowerItem.includes('brand') ||
+            lowerItem.includes('avatar')
+          ) && !isScreenshot;
+
+          if (isScreenshot) {
+            stats.screenshots.push(relPath.replace(/\\/g, '/'));
+          } else if (isIconOrLogo) {
+            stats.logos.push(relPath.replace(/\\/g, '/'));
+          }
+        }
 
         // Docs files
         if (ext === '.md' && item !== 'README.md' && !IGNORED_FOLDERS.has(path.basename(dirPath))) {

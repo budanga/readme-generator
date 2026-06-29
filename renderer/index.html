@@ -3,6 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src *; img-src 'self' data: https://img.shields.io *;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>README Generator</title>
   <link rel="stylesheet" href="styles.css">
@@ -274,8 +275,21 @@
           <div class="editor-workspace">
 
             <!-- Left Side: Custom Section Editor Cards -->
-            <div class="editor-cards-column" id="editor-sections-container">
-              <!-- Cards for each README section will be dynamically rendered here -->
+            <div class="editor-cards-column" style="overflow: hidden !important; padding-right: 0;">
+              <div id="thinking-toggle-container" style="margin-bottom: 12px; display: none; flex-shrink: 0; padding-right: 5px;">
+                <button id="btn-toggle-thinking" class="btn btn-secondary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+                  </svg>
+                  <span>Show AI Thoughts</span>
+                </button>
+              </div>
+              <div id="editor-sections-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; width: 100%; padding-right: 5px;">
+                <!-- Cards for each README section will be dynamically rendered here -->
+              </div>
+              <div id="editor-thinking-container" style="flex: 1; overflow-y: auto; display: none; width: 100%; background-color: rgba(30, 30, 30, 0.7); border: 1px solid var(--border-color); border-radius: 6px; padding: 15px; font-family: var(--font-mono); font-size: 13px; color: #d4d4d4; white-space: pre-wrap; box-sizing: border-box; line-height: 1.5;">
+              </div>
             </div>
 
             <!-- Right Side: Live Markdown Preview (styled like GitHub) -->
@@ -310,6 +324,9 @@
               <!-- Preview HTML Container -->
               <div class="preview-body markdown-body" id="preview-markdown-container">
                 <p class="empty-placeholder">Select project and generate README to view preview.</p>
+              </div>
+              <div class="ai-warning-footer" style="padding: 8px 12px; background-color: var(--bg-sidebar); border-top: 1px solid var(--border-color); font-size: 11px; color: var(--text-muted); text-align: center; flex-shrink: 0;">
+                ⚠️ AI can generate errors or invent information. Please review the generated README before using it.
               </div>
             </div>
 
@@ -373,6 +390,8 @@
                 <div class="form-group">
                   <label for="settings-api-model">Gemini Model</label>
                   <select id="settings-api-model" class="form-control">
+                    <option value="gemini-3.5-pro">Gemini 3.5 Pro (Deep Reasoning & Coding)</option>
+                    <option value="gemini-3.5-flash">Gemini 3.5 Flash (Fast & High Capability)</option>
                     <option value="gemini-3.1-pro">Gemini 3.1 Pro (High)</option>
                     <option value="gemini-3.1-flash">Gemini 3.1 Flash (Fast)</option>
                     <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep Code Reasoning)</option>

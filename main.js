@@ -205,7 +205,12 @@ ipcMain.handle('generate-readme', async (event, { stats, options }) => {
       },
       signal
     );
-    return result;
+    return {
+      success: result.success,
+      resultText: result.resultText,
+      thinkingText: result.thinkingText,
+      error: result.error
+    };
   } catch (error) {
     if (error.name === 'AbortError') {
       return { success: false, error: 'Generation cancelled by user.', aborted: true };

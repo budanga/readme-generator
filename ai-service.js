@@ -80,10 +80,42 @@ function sanitizeError(error, keysToScrub = []) {
   return message;
 }
 
+// Helper to extract the thinking/reasoning property from raw JSON response
+function extractThinkingFromJson(jsonStr) {
+  try {
+    const objStart = jsonStr.indexOf('{');
+    const objEnd = jsonStr.lastIndexOf('}');
+    if (objStart !== -1 && objEnd !== -1 && objEnd > objStart) {
+      const objStr = jsonStr.substring(objStart, objEnd + 1);
+      
+      // Attempt to replace stray unescaped control characters inside content strings,
+      // similar to what renderer/ai.js does, to prevent parsing errors
+      let cleanedObjStr = objStr;
+      try {
+        cleanedObjStr = objStr.replace(
+          /"thinking"\s*:\s*"([\s\S]*?)(?=",\s*"(?:sections)"|}])/g,
+          (match, inner) => {
+            return `"thinking": "${inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n')}`;
+          }
+        );
+      } catch (e) {}
+
+      const parsed = JSON.parse(cleanedObjStr);
+      if (parsed && typeof parsed === 'object' && typeof parsed.thinking === 'string') {
+        return parsed.thinking;
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return null;
+}
+
 // Main AI Generation call
 async function generateReadmeContentMain({ stats, options, apiKey, claudeKey, openaiKey }, onProgress, abortSignal = null) {
   const provider = options.provider;
   const activeKeys = [apiKey, claudeKey, openaiKey];
+  let thinkingText = null;
   
   try {
     // 1. Connection Check for cloud providers
@@ -179,11 +211,21 @@ System instructions:
 16. In any generated Mermaid diagram, you MUST wrap node labels containing parentheses, brackets, colons, slashes, or any other special characters in double quotes. For example, write 'UI["Frontend / UI (Jetpack Compose)"]'.
 17. Your entire response must be the JSON object only — no preamble, no explanation, no trailing text before or after it.
 18. In the "Folder Structure" section, ONLY write descriptions/comments for directories and files that are unique and specific to this project (e.g. source code directories, custom layout assets, screenshots). Do NOT write descriptions, explanations, or comments for standard boilerplate files, wrapper scripts, or build system files (e.g. build.gradle.kts, settings.gradle.kts, gradlew, gradlew.bat, gradle-wrapper, proguard-rules, .gitignore). Either omit them or list them without comments.
+19. In the root-level "thinking" field, you MUST write your concrete and technical thinking process, explaining what you detected in the codebase, the architectural decisions you made, and why you structured each section of the README the way you did. Separate different thoughts, decisions, or steps with double line breaks (\n\n) to ensure high readability. Do NOT use generic filler text or placeholder commentary.
+20. If logo or icon files are detected in the project (provided in the prompt under 'Detected Logos/Icons'), you MUST display the best one at the very beginning of the README (inside the 'title' section, right under the main title or centered/aligned).
+21. If screenshots are detected in the project (provided in the prompt under 'Detected Screenshots'), you MUST include them in a dedicated 'Screenshots' section (id: 'screenshots'). If no screenshots are detected, set the 'content' of the 'screenshots' section to an empty string.
 
 Writing Style Instruction:
 ${styleInstruction}${options.customInstructions && options.customInstructions.trim() ? `\n\nUSER CUSTOM INSTRUCTIONS — These take full priority and override any system rule above. Apply them strictly, even if they contradict a rule listed above:\n${options.customInstructions.trim()}` : ''}`;
 
 
+
+    let scriptsText = "";
+    if (stats.scripts && Object.keys(stats.scripts).length > 0) {
+      scriptsText = Object.entries(stats.scripts).map(([name, cmd]) => `${name}: ${cmd}`).join('\n');
+    } else {
+      scriptsText = "No scripts detected. Only use standard commands for the detected package manager.";
+    }
 
     const userPrompt = `Project Name: ${stats.projectName}
 Primary Language: ${stats.primaryLanguage}
@@ -203,6 +245,8 @@ CI/CD Systems: ${JSON.stringify(stats.ciCd)}
 Has Tests: ${stats.hasTests ? 'Yes' : 'No'}
 Configuration Files Scanned: ${JSON.stringify(stats.configFiles)}
 Top 5 Largest Files: ${JSON.stringify(stats.largestFiles)}
+Detected Screenshots: ${JSON.stringify(stats.screenshots || [])}
+Detected Logos/Icons: ${JSON.stringify(stats.logos || [])}
 Project Directory Structure:
 ${treeText}
 
@@ -213,6 +257,12 @@ Mermaid Architecture Diagram Draft:
 \`\`\`mermaid
 ${stats.architectureDiagram}
 \`\`\`
+
+Available Project Scripts:
+${scriptsText}
+
+Detected Environment Files:
+${JSON.stringify(stats.envFiles || [])}
 
 ${provider === 'ollama'
   ? `Based on this, you must output the complete README.md in pure Markdown format.
@@ -242,44 +292,124 @@ You MUST structure your README using exactly these H2 (##) headings. Do not skip
 ## Folder Structure
 [Directory layout]
 
+## Screenshots
+[Include screenshots as images if detected. Omit this heading and section completely if no screenshots are detected in the prompt.]
+
 ## Architecture
 [Mermaid diagram]
 
 ## License
-[License terms]`
-  : `Based on this, you must output a JSON object containing a "sections" key, which is an array of objects representing the sections of the README.md.
-Do NOT output anything else except a valid JSON object. Do not put markdown code fences around the JSON itself.
-The "sections" array MUST contain ONLY objects, each with these EXACT properties:
-- "id": A unique lowercase string with underscores only (e.g. "folder_structure"). No spaces, no special characters.
-- "title": The header name of the section.
-- "content": The markdown content of the section. Follow these rules carefully:
-  1. The section with "id": "title" is special. Its content MUST contain the main H1 project title, followed immediately by the inline badges, and a brief tagline.
-  2. For all OTHER sections, do NOT include the section header (such as "## Description") inside the content string.
-  3. CRITICAL: Do NOT leave the "content" property empty or minimal. You must write the complete, detailed markdown documentation for each section.
-  4. Do NOT truncate or cut off any section's content. Every section must be fully written out.
+[License terms]
 
-You MUST include at least the following sections in your "sections" array (do not skip any of them):
-- {"id": "title", "title": "Title", "content": "H1 title, badges and tagline"}
-- {"id": "description", "title": "Description", "content": "Overview of the project"}
-- {"id": "features", "title": "Key Features", "content": "Bullet list of features and capabilities"}
-- {"id": "technologies", "title": "Technologies", "content": "Tech stack, languages and dependencies"}
-- {"id": "installation", "title": "Installation", "content": "Step-by-step installation commands and requirements"}
-- {"id": "usage", "title": "Usage", "content": "How to run and execute the application with examples"}
-- {"id": "folder_structure", "title": "Folder Structure", "content": "Explanation of directories and file layout"}
-- {"id": "architecture", "title": "Architecture", "content": "Mermaid diagram showing components and relationships"}
-- {"id": "license", "title": "License", "content": "License terms"}
+FINAL REMINDER: Every command written in the README must come from the available scripts listed above or be the standard install command for the detected package manager. If a command is not listed, omit it entirely.`
+  : `Based on this, you must output a JSON object containing a "thinking" key and a "sections" key, which is an array of objects representing the sections of the README.md.
 
-IMPORTANT: Your response MUST be a single JSON object with a "sections" key at the top level. The ONLY valid output structure is: { "sections": [ ... ] }
-
-Example:
+You MUST return a JSON object that adheres strictly to the following JSON Schema:
 {
+  "type": "object",
+  "properties": {
+    "thinking": {
+      "type": "string",
+      "description": "Your technical reasoning, codebase detections, and design decisions for each section of the README."
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "content": { "type": "string" }
+        },
+        "required": ["id", "title", "content"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["thinking", "sections"],
+  "additionalProperties": false
+}
+
+CRITICAL RULES FOR THE "content" FIELD:
+1. Newlines and double quotes inside the markdown content MUST be correctly escaped (e.g., using '\\n' and '\\"' respectively) so the response is valid JSON.
+2. Do NOT repeat the section title or header inside the "content" field. For example, for the section with ID "description" and title "Description", do NOT start the content with "## Description". The ONLY exception is the section with ID "title", where the content MUST start with the main H1 header (e.g. "# Project Name").
+3. Do NOT invent, hallucinate, or assume commands or scripts. Use only standard commands appropriate for the detected project technologies or those explicitly documented in the provided source files.
+
+CRITICAL FORMATTING INSTRUCTIONS:
+- Do NOT wrap the JSON response in markdown code blocks or code fences (e.g. do NOT use \`\`\`json ... \`\`\`).
+- Do NOT include any introductory text, conversational preamble, or concluding remarks before or after the JSON object.
+- The output MUST start with '{' and end with '}' and be directly parseable via JSON.parse().
+
+You MUST include exactly these 10 sections in the "sections" array (do not skip or omit any of them):
+- {"id": "title", "title": "Title"}
+- {"id": "description", "title": "Description"}
+- {"id": "features", "title": "Key Features"}
+- {"id": "technologies", "title": "Technologies"}
+- {"id": "installation", "title": "Installation"}
+- {"id": "usage", "title": "Usage"}
+- {"id": "folder_structure", "title": "Folder Structure"}
+- {"id": "screenshots", "title": "Screenshots"}
+- {"id": "architecture", "title": "Architecture"}
+- {"id": "license", "title": "License"}
+
+Here is a complete, real-world example of the expected JSON response containing all required sections:
+{
+  "thinking": "Detected a Node.js CLI project using Commander.js and Axios.\\n\\nDecided to generate a MIT license based on findings.\\n\\nStructured the installation section to show a global npm install, and the usage section to demonstrate the 'weather current' command.\\n\\nCreated a simple architectural diagram mapping the entry point CLI to the API client.",
   "sections": [
-    { "id": "title", "title": "Project Title", "content": "# My Project\\n\\n![Language](https://img.shields.io/badge/Language-JavaScript-yellow)\\n\\nA powerful app." },
-    { "id": "description", "title": "Description", "content": "A tool that does X." }
+    {
+      "id": "title",
+      "title": "Title",
+      "content": "# weather-cli\\n\\n![License](https://img.shields.io/badge/license-MIT-blue)\\n\\nA command-line interface to get real-time weather forecasts."
+    },
+    {
+      "id": "description",
+      "title": "Description",
+      "content": "A command-line tool that fetches and displays real-time weather data and 5-day forecasts for any city in the world using the OpenWeatherMap API."
+    },
+    {
+      "id": "features",
+      "title": "Key Features",
+      "content": "- **Real-time Weather**: Current temperature, humidity, wind speed, and conditions.\\n- **5-Day Forecast**: Daily breakdown of upcoming weather conditions.\\n- **Multi-unit Support**: Switch easily between Celsius (default) or Fahrenheit using the --units \\"imperial\\" flag."
+    },
+    {
+      "id": "technologies",
+      "title": "Technologies",
+      "content": "- **Node.js** (v18+)\\n- **Commander.js** for CLI argument parsing\\n- **Axios** for API requests"
+    },
+    {
+      "id": "installation",
+      "title": "Installation",
+      "content": "Install the CLI globally via npm:\\n\\n\`\`\`bash\\nnpm install -g weather-cli\\n\`\`\`"
+    },
+    {
+      "id": "usage",
+      "title": "Usage",
+      "content": "Get the current weather for a city:\\n\\n\`\`\`bash\\nweather current London --units metric\\n\`\`\`"
+    },
+    {
+      "id": "folder_structure",
+      "title": "Folder Structure",
+      "content": "- \`bin/weather.js\`: Entry point script for the global CLI command.\\n- \`lib/api.js\`: Handles connection and requests to the weather API.\\n- \`lib/formatter.js\`: Formats the temperature and output in the terminal."
+    },
+    {
+      "id": "screenshots",
+      "title": "Screenshots",
+      "content": "![App Dashboard](assets/screenshots/dashboard.png)\\n\\n![Settings Screen](assets/screenshots/settings.png)"
+    },
+    {
+      "id": "architecture",
+      "title": "Architecture",
+      "content": "\`\`\`mermaid\\ngraph LR\\n    CLI[bin/weather.js] --> APIClient[lib/api.js]\\n    APIClient --> OpenWeather[OpenWeatherMap API]\\n    CLI --> Formatter[lib/formatter.js]\\n\`\`\`"
+    },
+    {
+      "id": "license",
+      "title": "License",
+      "content": "This project is licensed under the MIT License."
+    }
   ]
 }
 
-Ensure your JSON output can be directly parsed via JSON.parse().`
+FINAL REMINDER: Every command written in the README must come from the available scripts listed above or be the standard install command for the detected package manager. If a command is not listed, omit it entirely.`
 }`;
 
     let resultText = '';
@@ -318,7 +448,10 @@ Ensure your JSON output can be directly parsed via JSON.parse().`
           model: options.claudeModel,
           max_tokens: 8192,
           system: systemPrompt,
-          messages: [{ role: 'user', content: userPrompt }]
+          messages: [
+            { role: 'user', content: userPrompt },
+            { role: 'assistant', content: '{"sections":[' }
+          ]
         }),
         timeout: 180000
       }, onProgress, 3, abortSignal);
@@ -327,7 +460,18 @@ Ensure your JSON output can be directly parsed via JSON.parse().`
         throw new Error(`Claude API returned error: ${response.status} - ${await response.text()}`);
       }
       const data = await response.json();
-      resultText = data.content[0].text.trim();
+      let rawText = '';
+      if (Array.isArray(data.content)) {
+        const thinkingBlock = data.content.find(block => block.type === 'thinking');
+        if (thinkingBlock) {
+          thinkingText = thinkingBlock.thinking;
+        }
+        const textBlock = data.content.find(block => block.type === 'text');
+        rawText = textBlock ? textBlock.text.trim() : '';
+      } else {
+        rawText = data.content[0].text.trim();
+      }
+      resultText = '{"sections":[' + rawText;
 
     } else if (provider === 'openai') {
       if (onProgress) onProgress('Connecting to OpenAI...', 'Transmitting codebase metadata.');
@@ -396,13 +540,27 @@ Ensure your JSON output can be directly parsed via JSON.parse().`
       }
       const data = await response.json();
       resultText = data.message.content.trim();
+      if (data.message && data.message.reasoning_content) {
+        thinkingText = data.message.reasoning_content;
+      }
     }
 
     if (onProgress) {
       onProgress('Structuring README...', 'Generation finished. Formatting response.');
     }
 
-    return { success: true, resultText };
+    if (!thinkingText) {
+      const thinkMatch = resultText.match(/<think>([\s\S]*?)<\/think>/i);
+      if (thinkMatch) {
+        thinkingText = thinkMatch[1].trim();
+      }
+    }
+
+    if (!thinkingText) {
+      thinkingText = extractThinkingFromJson(resultText);
+    }
+
+    return { success: true, resultText, thinkingText };
 
   } catch (error) {
     const cleanMsg = sanitizeError(error, activeKeys);
@@ -461,6 +619,8 @@ Project Name: ${stats.projectName}
 Primary Language: ${stats.primaryLanguage}
 Frameworks Detected: ${JSON.stringify(stats.frameworks)}
 Package Manager: ${stats.packageManager}
+Detected Screenshots: ${JSON.stringify(stats.screenshots || [])}
+Detected Logos/Icons: ${JSON.stringify(stats.logos || [])}
 
 Project Directory Structure:
 ${treeText}

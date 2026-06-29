@@ -4,7 +4,9 @@
   "description": "AI-powered README Generator desktop application",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
@@ -12,7 +14,31 @@
     "mermaid": "^10.9.0"
   },
   "devDependencies": {
-    "electron": "^30.0.1"
+    "electron": "^30.0.1",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.antigravity.readme-generator",
+    "productName": "README Generator",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "renderer/assets/icon.png",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "files": [
+      "**/*",
+      "!dist/*"
+    ]
   },
   "keywords": [],
   "author": "",
