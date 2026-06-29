@@ -425,7 +425,11 @@ FINAL REMINDER: Every command written in the README must come from the available
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: systemPrompt + "\n\n" + userPrompt }] }],
-          generationConfig: { responseMimeType: 'application/json' }
+          generationConfig: { 
+            responseMimeType: 'application/json',
+            maxOutputTokens: 8192,
+            temperature: 0.2
+          }
         }),
         timeout: 180000
       }, onProgress, 3, abortSignal);
@@ -485,6 +489,7 @@ FINAL REMINDER: Every command written in the README must come from the available
         body: JSON.stringify({
           model: options.openaiModel,
           response_format: { type: 'json_object' },
+          max_tokens: 4096,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
