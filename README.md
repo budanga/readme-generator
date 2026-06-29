@@ -28,25 +28,44 @@ The tool integrates with multiple AI providers—including Google Gemini, Anthro
 *   **Diagramming:** mermaid
 *   **Package Manager:** npm
 
-## Installation
+## Installation & Setup
 
-To set up the project locally, clone the repository and install the necessary dependencies:
+### For Windows Users (Recommended)
+Go to the [Releases](https://github.com/budanga/readme-generator/releases) page, download the latest `README Generator Setup 1.0.0.exe` installer, and run it.
 
+### From Source (Linux, macOS, Windows Dev)
+To run the application from source code:
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/budanga/readme-generator.git
+   cd readme-generator
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+
+3. **Launch the application**:
+   ```bash
+   npm start
+   ```
+
+### Building the Executable
+To package the app yourself:
 ```bash
-npm install
+# Package into a setup installer for Windows
+npm run dist
 ```
 
 ## Usage
 
-1.  Launch the application by running the main entry point:
-    ```bash
-    node main.js
-    ```
-2.  **Select Project:** Click on "Select Project" to choose the local directory you wish to analyze.
-3.  **Scan & Analyze:** The app will scan your files and provide a summary of detected technologies, file counts, and complexity metrics.
-4.  **Configure AI:** Navigate to Settings to input your API keys (the application handles encryption automatically) and select your preferred provider/model.
-5.  **Generate:** Click "Generate" to produce the README content based on the scanned data.
-6.  **Refine & Export:** Use the editor to tweak specific sections or regenerate them with custom prompts before exporting to `.md` or `.pdf`.
+1.  **Select Project:** Click on "Select Project" to choose the local directory you wish to analyze.
+2.  **Scan & Analyze:** The app will scan your files and provide a summary of detected technologies, file counts, and complexity metrics.
+3.  **Configure AI:** Navigate to Settings to input your API keys (the application handles encryption automatically) and select your preferred provider/model.
+4.  **Generate:** Click "Generate" to produce the README content based on the scanned data.
+5.  **Refine & Export:** Use the editor to tweak specific sections or regenerate them with custom prompts before exporting to `.md` or `.pdf`.
 
 ## Folder Structure
 
