@@ -52,13 +52,6 @@ To run the application from source code:
    npm start
    ```
 
-### Building the Executable
-To package the app yourself:
-```bash
-# Package into a setup installer for Windows
-npm run dist
-```
-
 ## Usage
 
 1.  **Select Project:** Click on "Select Project" to choose the local directory you wish to analyze.
