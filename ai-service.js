@@ -1,26 +1,89 @@
-const dns = require('dns');
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504, 529]);
+const MAX_RETRY_AFTER_MS = 30000;
+const NETWORK_ERROR_CODES = new Set(['ENOTFOUND', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ENETUNREACH', 'UND_ERR_CONNECT_TIMEOUT']);
 
-// Simple connection check helper
-function checkConnection() {
-  return new Promise((resolve) => {
-    dns.lookup('google.com', (err) => {
-      resolve(err === null);
-    });
+// Max characters of key source files sent to the model
+const CLOUD_CHAR_BUDGET = 80000;
+const LOCAL_CHAR_BUDGET = 30000;
+
+// Output token budgets per provider (Gemini counts thinking tokens against its limit)
+const GENERATION_MAX_TOKENS = { gemini: 32768, claude: 16000, openai: 16384, ollama: 8192 };
+const SECTION_MAX_TOKENS = { gemini: 16384, claude: 8192, openai: 8192, ollama: 2048 };
+
+const SECTION_SYSTEM_PROMPT = 'You are an expert technical writer. The user wants to regenerate a specific section of their project README.md file. Be objective and factual, avoiding hype.';
+
+const README_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    thinking: { type: 'string' },
+    sections: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          title: { type: 'string' },
+          content: { type: 'string' }
+        },
+        required: ['id', 'title', 'content'],
+        additionalProperties: false
+      }
+    }
+  },
+  required: ['thinking', 'sections'],
+  additionalProperties: false
+};
+
+function createAbortError() {
+  return Object.assign(new Error('Generation cancelled by user.'), { name: 'AbortError' });
+}
+
+function isNetworkError(error) {
+  const code = (error.cause && error.cause.code) || error.code;
+  return NETWORK_ERROR_CODES.has(code) || (error instanceof TypeError && /fetch failed/i.test(error.message));
+}
+
+// Abortable sleep so Cancel takes effect during backoff
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal && signal.aborted) return reject(createAbortError());
+    const onAbort = () => {
+      clearTimeout(id);
+      reject(createAbortError());
+    };
+    const id = setTimeout(() => {
+      if (signal) signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
   });
+}
+
+function getRetryDelay(response, attempt) {
+  const header = response.headers && response.headers.get('retry-after');
+  if (header) {
+    const seconds = Number(header);
+    const ms = isNaN(seconds) ? Date.parse(header) - Date.now() : seconds * 1000;
+    if (!isNaN(ms) && ms >= 0) return Math.min(ms, MAX_RETRY_AFTER_MS);
+  }
+  return Math.pow(2, attempt) * 2000 + Math.random() * 1000;
 }
 
 // Fetch helper with timeout and retries (rate-limit / backoff)
 async function fetchWithRetry(url, options = {}, onProgress, maxRetries = 3, abortSignal = null) {
   const { timeout = 180000, ...fetchOptions } = options;
-  
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     // Respect external cancellation before attempting
-    if (abortSignal && abortSignal.aborted) {
-      throw Object.assign(new Error('Generation cancelled by user.'), { name: 'AbortError' });
-    }
+    if (abortSignal && abortSignal.aborted) throw createAbortError();
 
+    const isLastAttempt = attempt === maxRetries - 1;
     const timeoutController = new AbortController();
-    const id = setTimeout(() => timeoutController.abort(), timeout);
+    let timedOut = false;
+    const id = setTimeout(() => {
+      timedOut = true;
+      timeoutController.abort();
+    }, timeout);
 
     // Combine timeout signal with optional external abort signal
     const signals = [timeoutController.signal];
@@ -33,34 +96,43 @@ async function fetchWithRetry(url, options = {}, onProgress, maxRetries = 3, abo
         signal: combinedSignal
       });
       clearTimeout(id);
-      
-      // Exponential backoff for 429 (rate limit) or 503 (service unavailable)
-      if (response.status === 429 || response.status === 503) {
-        const delay = Math.pow(2, attempt) * 2000 + Math.random() * 1000;
+
+      // Backoff for rate limit / overloaded / transient server errors. The last
+      // attempt returns the response so the caller can surface the provider's error body.
+      if (RETRYABLE_STATUS.has(response.status) && !isLastAttempt) {
+        const delay = getRetryDelay(response, attempt);
         if (onProgress) {
           onProgress('Rate limited / Service busy...', `Retrying in ${Math.round(delay/1000)}s (attempt ${attempt + 1}/${maxRetries})`);
         }
-        await new Promise(r => setTimeout(r, delay));
+        if (response.body) response.body.cancel().catch(() => {});
+        await sleep(delay, abortSignal);
         continue;
       }
-      
+
       return response;
     } catch (error) {
       clearTimeout(id);
-      // Propagate cancellation immediately without retrying
-      if (error.name === 'AbortError') throw error;
-      if (attempt === maxRetries - 1) {
+      // External cancellation propagates immediately without retrying
+      if (abortSignal && abortSignal.aborted) throw createAbortError();
+      if (timedOut) {
+        throw Object.assign(new Error(`Request timed out after ${Math.round(timeout / 1000)}s.`), { name: 'TimeoutError' });
+      }
+      if (isLastAttempt) {
+        if (isNetworkError(error)) {
+          throw Object.assign(new Error('Network error — check your connection.'), { cause: error });
+        }
         throw error;
       }
       const delay = Math.pow(2, attempt) * 2000 + Math.random() * 1000;
       if (onProgress) {
         onProgress('Network error...', `Retrying in ${Math.round(delay/1000)}s (attempt ${attempt + 1}/${maxRetries})`);
       }
-      await new Promise(r => setTimeout(r, delay));
+      await sleep(delay, abortSignal);
     }
   }
   throw new Error('Max retries exceeded');
 }
+
 
 // Sanitize sensitive credentials from error messages
 function sanitizeError(error, keysToScrub = []) {
@@ -111,21 +183,243 @@ function extractThinkingFromJson(jsonStr) {
   return null;
 }
 
+// Render the project tree in the same format as the renderer
+function formatProjectTree(node, prefix = "") {
+  if (!node) return "";
+  let result = "";
+  if (node.children && node.children.length > 0) {
+    node.children.forEach((child, index) => {
+      const isLast = index === node.children.length - 1;
+      const marker = isLast ? "└── " : "├── ";
+      result += `${prefix}${marker}${child.name}${child.type === 'directory' ? '/' : ''}\n`;
+      if (child.type === 'directory' && child.children) {
+        const nextPrefix = prefix + (isLast ? "    " : "│   ");
+        result += formatProjectTree(child, nextPrefix);
+      }
+    });
+  }
+  return result;
+}
+
+function buildTreeText(stats) {
+  if (!stats.projectTree) return 'Not available';
+  return `${stats.projectTree.name}/\n${formatProjectTree(stats.projectTree)}`;
+}
+
+// Key files text with a character budget (entry points always pass through)
+function buildKeyFilesText(stats, charBudget) {
+  if (!stats.keyFiles || stats.keyFiles.length === 0) return 'No key source files content extracted.';
+
+  let accumulated = 0;
+  const includedFiles = [];
+
+  for (const file of stats.keyFiles) {
+    const parts = file.path.split('.');
+    const ext = parts.length > 1 ? parts[parts.length - 1] : '';
+    const block = `### File: ${file.path}${file.isEntryPoint ? ' (ENTRY POINT)' : ''}\n\`\`\`${ext}\n${file.content}\n\`\`\``;
+
+    if (!file.isEntryPoint && accumulated + block.length > charBudget) {
+      break; // Budget exhausted — entry point always passes through above
+    }
+    includedFiles.push(block);
+    accumulated += block.length;
+  }
+
+  return includedFiles.join('\n\n');
+}
+
+// Ollama silently drops the start of the prompt if it exceeds num_ctx, so size it to fit
+function computeOllamaContext(system, user, numPredict) {
+  const promptTokens = Math.ceil((system.length + user.length) / 3.5);
+  const needed = promptTokens + numPredict;
+  return Math.min(32768, Math.ceil(needed / 2048) * 2048);
+}
+
+function ollamaChatUrl(options) {
+  let url = `${options.ollamaUrl.replace(/\/$/, '')}/api/chat`;
+  if (url.includes('://localhost')) {
+    url = url.replace('://localhost', '://127.0.0.1');
+  }
+  return url;
+}
+
+// Single entry point for all providers. Returns { resultText, thinkingText, truncated }.
+async function callProvider({ provider, system, user, json = false, maxTokens, options, apiKey, claudeKey, openaiKey, onProgress, abortSignal }) {
+  let resultText = '';
+  let thinkingText = null;
+  let truncated = false;
+
+  if (provider === 'gemini') {
+    if (onProgress) onProgress('Connecting to Gemini AI...', 'Transmitting codebase metadata and key source files.');
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(options.modelName)}:generateContent`;
+    const generationConfig = { maxOutputTokens: maxTokens, temperature: 0.2 };
+    if (json) generationConfig.responseMimeType = 'application/json';
+
+    const response = await fetchWithRetry(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: 'user', parts: [{ text: user }] }],
+        generationConfig
+      }),
+      timeout: 180000
+    }, onProgress, 3, abortSignal);
+
+    if (!response.ok) {
+      throw new Error(`Gemini API returned error: ${response.status} - ${await response.text()}`);
+    }
+    const data = await response.json();
+    const candidate = data.candidates && data.candidates[0];
+    if (!candidate) {
+      const reason = data.promptFeedback && data.promptFeedback.blockReason;
+      throw new Error(reason ? `Gemini blocked the prompt (${reason}).` : 'Gemini returned no candidates.');
+    }
+    // Thinking models may return thought parts; keep only the answer text
+    const parts = (candidate.content && candidate.content.parts) || [];
+    resultText = parts.filter(p => !p.thought && typeof p.text === 'string').map(p => p.text).join('').trim();
+    truncated = candidate.finishReason === 'MAX_TOKENS';
+    if (!resultText) {
+      throw new Error(truncated
+        ? 'Gemini reached its output token limit before producing any text.'
+        : `Gemini returned an empty response (finishReason: ${candidate.finishReason || 'unknown'}).`);
+    }
+
+  } else if (provider === 'claude') {
+    if (onProgress) onProgress('Connecting to Anthropic Claude...', 'Transmitting codebase metadata.');
+    // Older Claude 3.x models cap output at 8192 tokens
+    const claudeMaxTokens = /claude-3|haiku-3/.test(options.claudeModel || '') ? Math.min(maxTokens, 8192) : maxTokens;
+    const send = (withSchema) => fetchWithRetry('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': claudeKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: options.claudeModel,
+        max_tokens: claudeMaxTokens,
+        system,
+        messages: [{ role: 'user', content: user }],
+        ...(withSchema ? { output_config: { format: { type: 'json_schema', schema: README_JSON_SCHEMA } } } : {})
+      }),
+      timeout: 180000
+    }, onProgress, 3, abortSignal);
+
+    let response = await send(json);
+    // Models without structured-output support reject the schema: retry once relying on the prompt alone
+    if (json && response.status === 400) {
+      const errBody = await response.text();
+      if (!/output_config|json_schema|structured/i.test(errBody)) {
+        throw new Error(`Claude API returned error: ${response.status} - ${errBody}`);
+      }
+      response = await send(false);
+    }
+    if (!response.ok) {
+      throw new Error(`Claude API returned error: ${response.status} - ${await response.text()}`);
+    }
+    const data = await response.json();
+    if (data.stop_reason === 'refusal') {
+      throw new Error('Claude declined to process this request.');
+    }
+    const blocks = Array.isArray(data.content) ? data.content : [];
+    resultText = blocks.filter(b => b.type === 'text' && typeof b.text === 'string').map(b => b.text).join('').trim();
+    const thinking = blocks.filter(b => b.type === 'thinking' && b.thinking).map(b => b.thinking).join('\n\n');
+    if (thinking) thinkingText = thinking;
+    truncated = data.stop_reason === 'max_tokens';
+    if (!resultText) throw new Error('Claude returned an empty response.');
+
+  } else if (provider === 'openai') {
+    if (onProgress) onProgress('Connecting to OpenAI...', 'Transmitting codebase metadata.');
+    const response = await fetchWithRetry('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiKey}`
+      },
+      body: JSON.stringify({
+        model: options.openaiModel,
+        ...(json ? { response_format: { type: 'json_object' } } : {}),
+        max_completion_tokens: maxTokens,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ]
+      }),
+      timeout: 180000
+    }, onProgress, 3, abortSignal);
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API returned error: ${response.status} - ${await response.text()}`);
+    }
+    const data = await response.json();
+    const choice = data.choices && data.choices[0];
+    if (!choice || !choice.message) throw new Error('OpenAI returned no choices.');
+    if (choice.message.refusal) throw new Error(`OpenAI declined the request: ${choice.message.refusal}`);
+    resultText = (choice.message.content || '').trim();
+    truncated = choice.finish_reason === 'length';
+    if (!resultText) {
+      throw new Error(truncated
+        ? 'OpenAI reached its output token limit before producing any text.'
+        : 'OpenAI returned an empty response.');
+    }
+
+  } else if (provider === 'ollama') {
+    if (!options.ollamaModel) throw new Error('No Ollama model selected.');
+    if (onProgress) onProgress(`Connecting to local Ollama (${options.ollamaModel})...`, 'Sending codebase stats to your local model.');
+
+    const url = ollamaChatUrl(options);
+    let response;
+    try {
+      response = await fetchWithRetry(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: options.ollamaModel,
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: user }
+          ],
+          stream: false,
+          think: false,
+          options: {
+            num_predict: maxTokens,
+            num_ctx: computeOllamaContext(system, user, maxTokens),
+            temperature: 0.2,
+            repeat_penalty: 1.1
+          }
+        }),
+        timeout: 600000
+      }, onProgress, 1, abortSignal);
+    } catch (err) {
+      if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+        throw err;
+      }
+      throw new Error(`Failed to connect to Ollama at ${url}. Please ensure:\n1. Ollama is running.\n2. You have downloaded the model by running: ollama run ${options.ollamaModel}\n3. The Ollama port is open and accessible.`);
+    }
+
+    if (!response.ok) {
+      throw new Error(`Ollama API returned error: ${response.status} - ${await response.text()}`);
+    }
+    const data = await response.json();
+    if (!data.message) throw new Error('Ollama returned an empty response.');
+    resultText = (data.message.content || '').trim();
+    thinkingText = data.message.reasoning_content || data.message.thinking || null;
+    truncated = data.done_reason === 'length';
+
+  } else {
+    throw new Error(`Unknown AI provider: ${provider}`);
+  }
+
+  return { resultText, thinkingText, truncated };
+}
+
 // Main AI Generation call
 async function generateReadmeContentMain({ stats, options, apiKey, claudeKey, openaiKey }, onProgress, abortSignal = null) {
   const provider = options.provider;
   const activeKeys = [apiKey, claudeKey, openaiKey];
-  let thinkingText = null;
   
   try {
-    // 1. Connection Check for cloud providers
-    if (provider !== 'ollama') {
-      const isOnline = await checkConnection();
-      if (!isOnline) {
-        throw new Error('No internet connection detected. Please check your network.');
-      }
-    }
-
     if (onProgress) {
       onProgress('Preparing Codebase Context...', 'Analyzing project files and packaging key contents.');
     }
@@ -140,54 +434,12 @@ async function generateReadmeContentMain({ stats, options, apiKey, claudeKey, op
       styleInstruction = "Maintain a balanced, standard, and professional level of detail (balanced style).";
     }
 
-    // Build tree text
-    let treeText = 'Not available';
-    if (stats.projectTree) {
-      // Helper to match renderer format
-      const formatProjectTree = (node, prefix = "") => {
-        if (!node) return "";
-        let result = "";
-        if (node.children && node.children.length > 0) {
-          node.children.forEach((child, index) => {
-            const isLast = index === node.children.length - 1;
-            const marker = isLast ? "└── " : "├── ";
-            result += `${prefix}${marker}${child.name}${child.type === 'directory' ? '/' : ''}\n`;
-            if (child.type === 'directory' && child.children) {
-              const nextPrefix = prefix + (isLast ? "    " : "│   ");
-              result += formatProjectTree(child, nextPrefix);
-            }
-          });
-        }
-        return result;
-      };
-      treeText = `${stats.projectTree.name}/\n${formatProjectTree(stats.projectTree)}`;
-    }
+    const treeText = buildTreeText(stats);
 
-    // Build key files text — apply a tighter budget for local models to avoid
-    // slow inference caused by large context windows on modest hardware.
-    const CLOUD_CHAR_BUDGET = 80000;
-    const LOCAL_CHAR_BUDGET = 30000;
+    // Apply a tighter budget for local models to avoid slow inference
+    // caused by large context windows on modest hardware.
     const charBudget = provider === 'ollama' ? LOCAL_CHAR_BUDGET : CLOUD_CHAR_BUDGET;
-
-    let keyFilesText = 'No key source files content extracted.';
-    if (stats.keyFiles && stats.keyFiles.length > 0) {
-      let accumulated = 0;
-      const includedFiles = [];
-
-      for (const file of stats.keyFiles) {
-        const parts = file.path.split('.');
-        const ext = parts.length > 1 ? parts[parts.length - 1] : '';
-        const block = `### File: ${file.path}${file.isEntryPoint ? ' (ENTRY POINT)' : ''}\n\`\`\`${ext}\n${file.content}\n\`\`\``;
-
-        if (!file.isEntryPoint && accumulated + block.length > charBudget) {
-          break; // Budget exhausted — entry point always passes through above
-        }
-        includedFiles.push(block);
-        accumulated += block.length;
-      }
-
-      keyFilesText = includedFiles.join('\n\n');
-    }
+    const keyFilesText = buildKeyFilesText(stats, charBudget);
 
     const systemPrompt = `You are a senior software engineer writing a README.md for your own project.
 Write the documentation from the perspective of the project developer. It must read 100% naturally, as if a human engineer wrote it.
@@ -211,7 +463,7 @@ System instructions:
 16. In any generated Mermaid diagram, you MUST wrap node labels containing parentheses, brackets, colons, slashes, or any other special characters in double quotes. For example, write 'UI["Frontend / UI (Jetpack Compose)"]'.
 17. Your entire response must be the JSON object only — no preamble, no explanation, no trailing text before or after it.
 18. In the "Folder Structure" section, ONLY write descriptions/comments for directories and files that are unique and specific to this project (e.g. source code directories, custom layout assets, screenshots). Do NOT write descriptions, explanations, or comments for standard boilerplate files, wrapper scripts, or build system files (e.g. build.gradle.kts, settings.gradle.kts, gradlew, gradlew.bat, gradle-wrapper, proguard-rules, .gitignore). Either omit them or list them without comments.
-19. In the root-level "thinking" field, you MUST write your concrete and technical thinking process, explaining what you detected in the codebase, the architectural decisions you made, and why you structured each section of the README the way you did. Separate different thoughts, decisions, or steps with double line breaks (\n\n) to ensure high readability. Do NOT use generic filler text or placeholder commentary.
+19. In the root-level "thinking" field, you MUST write your concrete and technical thinking process, explaining what you detected in the codebase, the architectural decisions you made, and why you structured each section of the README the way you did. Separate different thoughts, decisions, or steps with double line breaks (\n\n) to ensure high readability. Do NOT use generic filler text or placeholder commentary. Keep the whole "thinking" field concise: at most ~150 words.
 20. If logo or icon files are detected in the project (provided in the prompt under 'Detected Logos/Icons'), you MUST display the best one at the very beginning of the README (inside the 'title' section, right under the main title or centered/aligned).
 21. If screenshots are detected in the project (provided in the prompt under 'Detected Screenshots'), you MUST include them in a dedicated 'Screenshots' section (id: 'screenshots'). If no screenshots are detected, set the 'content' of the 'screenshots' section to an empty string.
 22. If the project is a desktop application (indicated by desktop frameworks like Electron, Tauri, or packaging configurations), you MUST structure the 'Installation' and 'Usage' sections to provide clear instructions for two separate audiences: end-users (downloading pre-built executables/installers from GitHub Releases) and developers (cloning the source code and running developer commands like \`npm start\` or build tools).
@@ -413,146 +665,25 @@ Here is a complete, real-world example of the expected JSON response containing 
 FINAL REMINDER: Every command written in the README must come from the available scripts listed above or be the standard install command for the detected package manager. If a command is not listed, omit it entirely.`
 }`;
 
-    let resultText = '';
-
-    // Provider Routing
-    if (provider === 'gemini') {
-      if (onProgress) onProgress('Connecting to Gemini AI...', 'Transmitting codebase metadata and key source files.');
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${options.modelName}:generateContent?key=${apiKey}`;
-      
-      const response = await fetchWithRetry(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: systemPrompt + "\n\n" + userPrompt }] }],
-          generationConfig: { 
-            responseMimeType: 'application/json',
-            maxOutputTokens: 8192,
-            temperature: 0.2
-          }
-        }),
-        timeout: 180000
-      }, onProgress, 3, abortSignal);
-
-      if (!response.ok) {
-        throw new Error(`Gemini API returned error: ${response.status} - ${await response.text()}`);
-      }
-      const data = await response.json();
-      resultText = data.candidates[0].content.parts[0].text.trim();
-
-    } else if (provider === 'claude') {
-      if (onProgress) onProgress('Connecting to Anthropic Claude...', 'Transmitting codebase metadata.');
-      const response = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': claudeKey,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: options.claudeModel,
-          max_tokens: 8192,
-          system: systemPrompt,
-          messages: [
-            { role: 'user', content: userPrompt },
-            { role: 'assistant', content: '{"sections":[' }
-          ]
-        }),
-        timeout: 180000
-      }, onProgress, 3, abortSignal);
-
-      if (!response.ok) {
-        throw new Error(`Claude API returned error: ${response.status} - ${await response.text()}`);
-      }
-      const data = await response.json();
-      let rawText = '';
-      if (Array.isArray(data.content)) {
-        const thinkingBlock = data.content.find(block => block.type === 'thinking');
-        if (thinkingBlock) {
-          thinkingText = thinkingBlock.thinking;
-        }
-        const textBlock = data.content.find(block => block.type === 'text');
-        rawText = textBlock ? textBlock.text.trim() : '';
-      } else {
-        rawText = data.content[0].text.trim();
-      }
-      resultText = '{"sections":[' + rawText;
-
-    } else if (provider === 'openai') {
-      if (onProgress) onProgress('Connecting to OpenAI...', 'Transmitting codebase metadata.');
-      const response = await fetchWithRetry('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${openaiKey}`
-        },
-        body: JSON.stringify({
-          model: options.openaiModel,
-          response_format: { type: 'json_object' },
-          max_tokens: 4096,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ]
-        }),
-        timeout: 180000
-      }, onProgress, 3, abortSignal);
-
-      if (!response.ok) {
-        throw new Error(`OpenAI API returned error: ${response.status} - ${await response.text()}`);
-      }
-      const data = await response.json();
-      resultText = data.choices[0].message.content.trim();
-
-    } else if (provider === 'ollama') {
-      if (!options.ollamaModel) throw new Error('No Ollama model selected.');
-      if (onProgress) onProgress(`Connecting to local Ollama (${options.ollamaModel})...`, 'Sending codebase stats to your local model.');
-      
-      let url = `${options.ollamaUrl.replace(/\/$/, '')}/api/chat`;
-      if (url.includes('://localhost')) {
-        url = url.replace('://localhost', '://127.0.0.1');
-      }
-
-      let response;
-      try {
-        response = await fetchWithRetry(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: options.ollamaModel,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt }
-            ],
-            stream: false,
-            think: false,
-            options: {
-              num_predict: 8192,
-              temperature: 0.2,
-              repeat_penalty: 1.2
-            }
-          }),
-          timeout: 600000
-        }, onProgress, 1, abortSignal);
-      } catch (err) {
-        if (err.name === 'AbortError') {
-          throw err;
-        }
-        throw new Error(`Failed to connect to Ollama at ${url}. Please ensure:\n1. Ollama is running.\n2. You have downloaded the model by running: ollama run ${options.ollamaModel}\n3. The Ollama port is open and accessible.`);
-      }
-
-      if (!response.ok) {
-        throw new Error(`Ollama API returned error: ${response.status} - ${await response.text()}`);
-      }
-      const data = await response.json();
-      resultText = data.message.content.trim();
-      if (data.message && data.message.reasoning_content) {
-        thinkingText = data.message.reasoning_content;
-      }
-    }
+    const { resultText, thinkingText: providerThinking, truncated } = await callProvider({
+      provider,
+      system: systemPrompt,
+      user: userPrompt,
+      json: provider !== 'ollama',
+      maxTokens: GENERATION_MAX_TOKENS[provider],
+      options,
+      apiKey,
+      claudeKey,
+      openaiKey,
+      onProgress,
+      abortSignal
+    });
+    let thinkingText = providerThinking;
 
     if (onProgress) {
-      onProgress('Structuring README...', 'Generation finished. Formatting response.');
+      onProgress('Structuring README...', truncated
+        ? 'Warning: the model reached its output limit, so the response may be incomplete.'
+        : 'Generation finished. Formatting response.');
     }
 
     if (!thinkingText) {
@@ -566,56 +697,26 @@ FINAL REMINDER: Every command written in the README must come from the available
       thinkingText = extractThinkingFromJson(resultText);
     }
 
-    return { success: true, resultText, thinkingText };
+    return { success: true, resultText, thinkingText, truncated };
 
   } catch (error) {
+    if (error.name === 'AbortError' || (abortSignal && abortSignal.aborted)) {
+      return { success: false, aborted: true, error: 'Generation cancelled by user.' };
+    }
     const cleanMsg = sanitizeError(error, activeKeys);
     return { success: false, error: cleanMsg };
   }
 }
 
 // Single section AI regeneration main call
-async function regenerateAISectionMain({ sectionId, sectionTitle, currentContent, stats, instructions, options, apiKey, claudeKey, openaiKey }, onProgress) {
+async function regenerateAISectionMain({ sectionId, sectionTitle, currentContent, stats, instructions, options, apiKey, claudeKey, openaiKey }, onProgress, abortSignal = null) {
   const provider = options.provider;
   const activeKeys = [apiKey, claudeKey, openaiKey];
 
   try {
-    if (provider !== 'ollama') {
-      const isOnline = await checkConnection();
-      if (!isOnline) {
-        throw new Error('No internet connection detected.');
-      }
-    }
-
-    let treeText = 'Not available';
-    if (stats.projectTree) {
-      const formatProjectTree = (node, prefix = "") => {
-        if (!node) return "";
-        let result = "";
-        if (node.children && node.children.length > 0) {
-          node.children.forEach((child, index) => {
-            const isLast = index === node.children.length - 1;
-            const marker = isLast ? "└── " : "├── ";
-            result += `${prefix}${marker}${child.name}${child.type === 'directory' ? '/' : ''}\n`;
-            if (child.type === 'directory' && child.children) {
-              const nextPrefix = prefix + (isLast ? "    " : "│   ");
-              result += formatProjectTree(child, nextPrefix);
-            }
-          });
-        }
-        return result;
-      };
-      treeText = `${stats.projectTree.name}/\n${formatProjectTree(stats.projectTree)}`;
-    }
-
-    let keyFilesText = 'No key source files content extracted.';
-    if (stats.keyFiles && stats.keyFiles.length > 0) {
-      keyFilesText = stats.keyFiles.map(file => {
-        const parts = file.path.split('.');
-        const ext = parts.length > 1 ? parts[parts.length - 1] : '';
-        return `### File: ${file.path}${file.isEntryPoint ? ' (ENTRY POINT)' : ''}\n\`\`\`${ext}\n${file.content}\n\`\`\``;
-      }).join('\n\n');
-    }
+    const treeText = buildTreeText(stats);
+    const charBudget = provider === 'ollama' ? LOCAL_CHAR_BUDGET : CLOUD_CHAR_BUDGET;
+    const keyFilesText = buildKeyFilesText(stats, charBudget);
 
     const prompt = `
 You are an expert technical writer. The user wants to regenerate a specific section of their project README.md file.
@@ -645,99 +746,24 @@ Please rewrite this section content based on the user instructions and project c
 Do NOT include the section header (like "## ${sectionTitle}") in your output. Just output the clean markdown body of the section. Do not wrap the output in markdown code fences unless the content itself is a code block.
 `;
 
-    let resultText = '';
+    const { resultText, truncated } = await callProvider({
+      provider,
+      system: SECTION_SYSTEM_PROMPT,
+      user: prompt,
+      maxTokens: SECTION_MAX_TOKENS[provider],
+      options,
+      apiKey,
+      claudeKey,
+      openaiKey,
+      onProgress,
+      abortSignal
+    });
 
-    if (provider === 'gemini') {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${options.modelName}:generateContent?key=${apiKey}`;
-      const response = await fetchWithRetry(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        }),
-        timeout: 180000
-      }, onProgress);
-      if (!response.ok) throw new Error(`Gemini API error: ${response.status} - ${await response.text()}`);
-      const data = await response.json();
-      resultText = data.candidates[0].content.parts[0].text;
-
-    } else if (provider === 'claude') {
-      const response = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': claudeKey,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: options.claudeModel,
-          max_tokens: 4096,
-          system: 'You are an expert technical writer. The user wants to regenerate a specific section of their project README.md file. Be objective and factual, avoiding hype.',
-          messages: [{ role: 'user', content: prompt }]
-        }),
-        timeout: 180000
-      }, onProgress);
-      if (!response.ok) throw new Error(`Claude API error: ${response.status} - ${await response.text()}`);
-      const data = await response.json();
-      resultText = data.content[0].text;
-
-    } else if (provider === 'openai') {
-      const response = await fetchWithRetry('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${openaiKey}`
-        },
-        body: JSON.stringify({
-          model: options.openaiModel,
-          messages: [
-            { role: 'system', content: 'You are an expert technical writer. The user wants to regenerate a specific section of their project README.md file. Be objective and factual, avoiding hype.' },
-            { role: 'user', content: prompt }
-          ]
-        }),
-        timeout: 180000
-      }, onProgress);
-      if (!response.ok) throw new Error(`OpenAI API error: ${response.status} - ${await response.text()}`);
-      const data = await response.json();
-      resultText = data.choices[0].message.content;
-
-    } else if (provider === 'ollama') {
-      if (!options.ollamaModel) throw new Error('No Ollama model selected.');
-      let url = `${options.ollamaUrl.replace(/\/$/, '')}/api/chat`;
-      if (url.includes('://localhost')) {
-        url = url.replace('://localhost', '://127.0.0.1');
-      }
-
-      let response;
-      try {
-        response = await fetchWithRetry(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: options.ollamaModel,
-            messages: [
-              { role: 'system', content: 'You are an expert technical writer. The user wants to regenerate a specific section of their project README.md file. Be objective and factual, avoiding hype.' },
-              { role: 'user', content: prompt }
-            ],
-            stream: false,
-            options: {
-              num_predict: 2048,
-              num_ctx: 8192
-            }
-          }),
-          timeout: 600000
-        }, onProgress, 1);
-      } catch (err) {
-        throw new Error(`Failed to connect to Ollama at ${url}. Please ensure:\n1. Ollama is running.\n2. You have downloaded the model by running: ollama run ${options.ollamaModel}`);
-      }
-
-      if (!response.ok) throw new Error(`Ollama API error: ${response.status} - ${await response.text()}`);
-      const data = await response.json();
-      resultText = data.message.content;
-    }
-
-    return { success: true, resultText: resultText.trim() };
+    return { success: true, resultText, truncated };
   } catch (error) {
+    if (error.name === 'AbortError' || (abortSignal && abortSignal.aborted)) {
+      return { success: false, aborted: true, error: 'Generation cancelled by user.' };
+    }
     const cleanMsg = sanitizeError(error, activeKeys);
     return { success: false, error: cleanMsg };
   }

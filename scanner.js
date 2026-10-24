@@ -100,6 +100,31 @@ function isMinifiedContent(content) {
   return false;
 }
 
+// Detect license type from LICENSE file text (word-boundary matches, most specific first)
+function detectLicenseType(text) {
+  if (/\bApache License\b/i.test(text)) return 'Apache-2.0';
+
+  // GPL family: LGPL/AGPL/GPL, version taken from the text when stated (defaults to 3.0)
+  let gplFamily = null;
+  if (/\bGNU\s+LESSER\b|\bLGPL\b/i.test(text)) gplFamily = 'LGPL';
+  else if (/\bGNU\s+AFFERO\b|\bAGPL\b/i.test(text)) gplFamily = 'AGPL';
+  else if (/\bGNU\s+GENERAL\s+PUBLIC\b|\bGPL\b/i.test(text)) gplFamily = 'GPL';
+  if (gplFamily) {
+    const version = text.match(/\bVersion\s+(\d+(?:\.\d+)?)/i);
+    const ver = version ? (version[1].includes('.') ? version[1] : `${version[1]}.0`) : '3.0';
+    return `${gplFamily}-${ver}`;
+  }
+
+  if (/\bBSD\b/.test(text) || /redistribution and use in source and binary forms/i.test(text)) return 'BSD';
+  if (/\bISC\b/.test(text)) return 'ISC';
+  if (/\bMozilla Public License\b/i.test(text)) {
+    const version = text.match(/\bVersion\s+(\d+\.\d+)/i);
+    return `MPL-${version ? version[1] : '2.0'}`;
+  }
+  if (/\bMIT License\b|\bMIT\b/.test(text)) return 'MIT';
+  return 'Custom/Unknown';
+}
+
 // Function to run a shell command safely inside a promise
 function runCommand(command, cwd) {
   return new Promise((resolve) => {
@@ -226,13 +251,13 @@ async function scanProject(projectPath, onProgress, signal) {
   const gitPath = path.join(projectPath, '.git');
   if (fs.existsSync(gitPath)) {
     stats.hasGit = true;
-    const branchRes = await runCommand('git rev-parse --abbrev-ref HEAD', projectPath);
+    const [branchRes, commitRes, authorRes] = await Promise.all([
+      runCommand('git rev-parse --abbrev-ref HEAD', projectPath),
+      runCommand('git rev-list --count HEAD', projectPath),
+      runCommand('git log -1 --format="%an <%ae>"', projectPath)
+    ]);
     if (branchRes.success) stats.gitInfo.branch = branchRes.stdout;
-    
-    const commitRes = await runCommand('git rev-list --count HEAD', projectPath);
     if (commitRes.success) stats.gitInfo.commits = parseInt(commitRes.stdout, 10) || 0;
-
-    const authorRes = await runCommand('git log -1 --format="%an <%ae>"', projectPath);
     if (authorRes.success) stats.gitInfo.author = authorRes.stdout;
   }
 
@@ -419,17 +444,7 @@ async function scanProject(projectPath, onProgress, signal) {
           stats.hasLicense = true;
           try {
             const licContent = (await fs.promises.readFile(fullPath, 'utf8')).substring(0, 1000);
-            if (licContent.includes('MIT License') || licContent.includes('MIT')) {
-              stats.licenseType = 'MIT';
-            } else if (licContent.includes('Apache License 2.0') || licContent.includes('Apache')) {
-              stats.licenseType = 'Apache-2.0';
-            } else if (licContent.includes('GNU General Public') || licContent.includes('GPL')) {
-              stats.licenseType = 'GPL-3.0';
-            } else if (licContent.includes('BSD License')) {
-              stats.licenseType = 'BSD';
-            } else {
-              stats.licenseType = 'Custom/Unknown';
-            }
+            stats.licenseType = detectLicenseType(licContent);
           } catch (e) {
             stats.licenseType = 'Detected (Unreadable)';
           }
@@ -475,12 +490,10 @@ async function scanProject(projectPath, onProgress, signal) {
         }
 
         // Check if test file
+        const relDirSegments = path.relative(projectPath, dirPath).toLowerCase().split(/[\\/]/);
         const isTestFile = (
-          lowerItem.includes('test') || 
-          lowerItem.includes('spec') || 
-          dirPath.includes('test') || 
-          dirPath.includes('tests') || 
-          dirPath.includes('__tests__')
+          relDirSegments.some(seg => ['test', 'tests', '__tests__', 'spec'].includes(seg)) ||
+          /^test_|_test\.|\.test\.|\.spec\.|^test\./.test(lowerItem)
         );
 
         if (isTestFile && isCodeFile(fullPath)) {
@@ -498,7 +511,7 @@ async function scanProject(projectPath, onProgress, signal) {
         }
 
         // Language & LOC calculation (avoid binary sniffing unless it matches extensions)
-        const isBinary = await isBinaryFile(fullPath);
+        const isBinary = isCodeFile(fullPath) ? await isBinaryFile(fullPath) : false;
         if (isCodeFile(fullPath) && !isBinary) {
           const lang = EXTENSION_MAP[ext] || 'Unknown';
           let loc = 0;

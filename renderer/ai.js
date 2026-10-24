@@ -271,7 +271,7 @@ async function generateAIExtractedReadme(stats, options) {
     } else {
       alert(`AI Generation failed (${error.message}). Falling back to Offline Template Mode.`);
     }
-    return generateMockReadme(stats);
+    return generateMockReadme(stats, options.style);
   }
 }
 
@@ -296,7 +296,31 @@ async function regenerateAISection(sectionId, sectionTitle, currentContent, stat
     if (!response.success) {
       throw new Error(response.error);
     }
-    return response.resultText;
+
+    let text = (response.resultText || '').trim();
+
+    // Strip an outer ```markdown / ``` fence wrapping the whole response
+    const fenced = text.match(/^```(?:markdown|md)?[ \t]*\r?\n([\s\S]*?)\r?\n?```$/i);
+    if (fenced) text = fenced[1].trim();
+
+    // Strip a leading header that just repeats the section title
+    if (sectionId !== 'title') {
+      const headerMatch = text.match(/^#{1,2}\s+(.+?)\s*(?:\r?\n|$)/);
+      if (headerMatch && headerMatch[1].trim().toLowerCase() === String(sectionTitle).trim().toLowerCase()) {
+        text = text.slice(headerMatch[0].length).trim();
+      }
+    }
+
+    // Auto-heal Mermaid blocks the same way the main generation path does
+    text = text.replace(/```mermaid\s*([\s\S]*?)\s*```/gi, (match, mermaidCode) => {
+      return '```mermaid\n' + sanitizeMermaid(mermaidCode) + '\n```';
+    });
+
+    if (!text) {
+      alert('The AI returned an empty section. The current content was kept.');
+      return currentContent;
+    }
+    return text;
   } catch (error) {
     console.error('Failed to regenerate section:', error);
     alert(`Failed to regenerate section: ${error.message}`);
@@ -304,17 +328,7 @@ async function regenerateAISection(sectionId, sectionTitle, currentContent, stat
   }
 }
 
-function extractJsonFromString(str) {
-  const jsonStart = str.indexOf('[');
-  const jsonEnd = str.lastIndexOf(']');
-  if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-    return str.substring(jsonStart, jsonEnd + 1);
-  }
-  return null;
-}
-
 function parseAndExtractSections(resultText) {
-  console.log("Raw AI response to parse:", resultText);
   let cleaned = resultText.trim();
 
   // Strip <think>...</think> blocks produced by reasoning models (e.g. Qwen3, DeepSeek-R1).
@@ -335,9 +349,10 @@ function parseAndExtractSections(resultText) {
   cleaned = cleaned.replace(/^```(?:json|markdown)?\s*/i, '').replace(/\s*```$/i, '').trim();
 
   // Detect Markdown by searching for a # or ## heading at the start of any line.
-  // JSON always uses escaped \n inside strings, so real line-start headings only appear
-  // in Markdown output — no false positives from ## inside JSON content fields.
-  const firstHeadingIndex = cleaned.search(/^#{1,2}\s+\S/m);
+  // Responses that start with { or [ are JSON, even if raw newlines inside "content"
+  // strings make a "## Heading" line appear, so they are never treated as Markdown.
+  const looksLikeJson = /^[{[]/.test(cleaned);
+  const firstHeadingIndex = looksLikeJson ? -1 : cleaned.search(/^#{1,2}\s+\S/m);
   const isMarkdown = firstHeadingIndex !== -1;
 
   // If the model added preamble text before the first heading, strip it.
@@ -366,8 +381,6 @@ function parseAndExtractSections(resultText) {
   function sanitizeSections(result) {
     if (!Array.isArray(result)) return null;
     const sanitized = result.map((section, index) => {
-      console.log(`[sanitizeSections] Raw section[${index}]:`, JSON.stringify(section));
-
       // Handle plain string elements — the AI returned a flat list instead of objects
       if (typeof section === 'string') {
         const str = section.trim();
@@ -667,7 +680,7 @@ function parseAndExtractSections(resultText) {
   // 2. Try Repair pass (escape stray newlines/quotes inside strings)
   try {
     const repaired = cleaned.replace(
-      /"content"\s*:\s*"([\s\S]*?)(?=",\s*"(?:id|title)"|}])/g,
+      /"content"\s*:\s*"([\s\S]*?)(?=",\s*"(?:id|title)"|(?<!\\)"\s*}\s*[,\]])/g,
       (match, inner) => {
         const fixed = inner
           .replace(/\\/g, '\\\\')
@@ -697,7 +710,7 @@ function parseAndExtractSections(resultText) {
       // Try repairing the extracted array substring
       try {
         const repairedArray = arrayStr.replace(
-          /"content"\s*:\s*"([\s\S]*?)(?=",\s*"(?:id|title)"|}])/g,
+          /"content"\s*:\s*"([\s\S]*?)(?=",\s*"(?:id|title)"|(?<!\\)"\s*}\s*[,\]])/g,
           (match, inner) => {
             return `"content": "${inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n').replace(/\t/g, '\\t')}`;
           }
@@ -721,7 +734,7 @@ function parseAndExtractSections(resultText) {
       // Try repairing the extracted object substring
       try {
         const repairedObj = objStr.replace(
-          /"content"\s*:\s*"([\s\S]*?)(?=",\s*"(?:id|title)"|}])/g,
+          /"content"\s*:\s*"([\s\S]*?)(?=",\s*"(?:id|title)"|(?<!\\)"\s*}\s*[,\]])/g,
           (match, inner) => {
             return `"content": "${inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n').replace(/\t/g, '\\t')}`;
           }

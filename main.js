@@ -111,6 +111,9 @@ ipcMain.handle('get-key', async (event, { name }) => {
   return val;
 });
 
+// Folder the user last picked via the dialog; the only place write-file may write to
+let selectedProjectFolder = null;
+
 // IPC Handler: Folder Selection
 ipcMain.handle('select-folder', async () => {
   if (!mainWindow) return null;
@@ -121,6 +124,7 @@ ipcMain.handle('select-folder', async () => {
   if (result.canceled || result.filePaths.length === 0) {
     return null;
   }
+  selectedProjectFolder = path.resolve(result.filePaths[0]);
   return result.filePaths[0];
 });
 
@@ -131,9 +135,10 @@ ipcMain.handle('scan-project', async (event, folderPath, modelName) => {
   if (activeScanAbortController) {
     activeScanAbortController.abort();
   }
-  activeScanAbortController = new AbortController();
-  const signal = activeScanAbortController.signal;
-  
+  const controller = new AbortController();
+  activeScanAbortController = controller;
+  const signal = controller.signal;
+
   try {
     const stats = await scanProject(
       folderPath, 
@@ -145,6 +150,7 @@ ipcMain.handle('scan-project', async (event, folderPath, modelName) => {
       signal,
       modelName
     );
+    selectedProjectFolder = path.resolve(folderPath);
     return { success: true, data: stats };
   } catch (error) {
     if (error.name === 'AbortError') {
@@ -152,7 +158,7 @@ ipcMain.handle('scan-project', async (event, folderPath, modelName) => {
     }
     return { success: false, error: error.message };
   } finally {
-    activeScanAbortController = null;
+    if (activeScanAbortController === controller) activeScanAbortController = null;
   }
 });
 
@@ -167,48 +173,55 @@ ipcMain.handle('cancel-scan', () => {
 });
 
 let activeGenerationAbortController = null;
+const activeSectionAbortControllers = new Set();
+
+function getStoredApiKeys() {
+  const config = readConfig();
+  const getDecryptedKey = (name) => {
+    const val = config[name];
+    if (!val) return '';
+    if (safeStorage.isEncryptionAvailable()) {
+      try {
+        const buf = Buffer.from(val, 'base64');
+        return safeStorage.decryptString(buf);
+      } catch (e) {
+        return val;
+      }
+    }
+    return val;
+  };
+
+  return {
+    apiKey: getDecryptedKey('gemini_api_key'),
+    claudeKey: getDecryptedKey('claude_api_key'),
+    openaiKey: getDecryptedKey('openai_api_key')
+  };
+}
 
 // IPC Handler: Generate README using AI
 ipcMain.handle('generate-readme', async (event, { stats, options }) => {
   if (activeGenerationAbortController) {
     activeGenerationAbortController.abort();
   }
-  activeGenerationAbortController = new AbortController();
-  const signal = activeGenerationAbortController.signal;
+  const controller = new AbortController();
+  activeGenerationAbortController = controller;
 
   try {
-    const config = readConfig();
-    const getDecryptedKey = (name) => {
-      const val = config[name];
-      if (!val) return '';
-      if (safeStorage.isEncryptionAvailable()) {
-        try {
-          const buf = Buffer.from(val, 'base64');
-          return safeStorage.decryptString(buf);
-        } catch (e) {
-          return val;
-        }
-      }
-      return val;
-    };
-
-    const apiKey = getDecryptedKey('gemini_api_key');
-    const claudeKey = getDecryptedKey('claude_api_key');
-    const openaiKey = getDecryptedKey('openai_api_key');
-
     const result = await generateReadmeContentMain(
-      { stats, options, apiKey, claudeKey, openaiKey },
+      { stats, options, ...getStoredApiKeys() },
       (progressTitle, progressDesc) => {
         if (!event.sender.isDestroyed()) {
           event.sender.send('generation-progress', { title: progressTitle, desc: progressDesc });
         }
       },
-      signal
+      controller.signal
     );
     return {
       success: result.success,
       resultText: result.resultText,
       thinkingText: result.thinkingText,
+      truncated: result.truncated,
+      aborted: result.aborted,
       error: result.error
     };
   } catch (error) {
@@ -217,63 +230,63 @@ ipcMain.handle('generate-readme', async (event, { stats, options }) => {
     }
     return { success: false, error: error.message };
   } finally {
-    activeGenerationAbortController = null;
+    if (activeGenerationAbortController === controller) activeGenerationAbortController = null;
   }
 });
 
-// IPC Handler: Cancel Generation
+// IPC Handler: Cancel Generation (also stops any section regeneration in flight)
 ipcMain.handle('cancel-generation', () => {
+  let cancelled = false;
   if (activeGenerationAbortController) {
     activeGenerationAbortController.abort();
     activeGenerationAbortController = null;
-    return true;
+    cancelled = true;
   }
-  return false;
+  for (const controller of activeSectionAbortControllers) {
+    controller.abort();
+    cancelled = true;
+  }
+  return cancelled;
 });
 
 // IPC Handler: Regenerate Single Section
 ipcMain.handle('regenerate-section', async (event, { sectionId, sectionTitle, currentContent, stats, instructions, options }) => {
+  const controller = new AbortController();
+  activeSectionAbortControllers.add(controller);
+
   try {
-    const config = readConfig();
-    const getDecryptedKey = (name) => {
-      const val = config[name];
-      if (!val) return '';
-      if (safeStorage.isEncryptionAvailable()) {
-        try {
-          const buf = Buffer.from(val, 'base64');
-          return safeStorage.decryptString(buf);
-        } catch (e) {
-          return val;
-        }
-      }
-      return val;
-    };
-
-    const apiKey = getDecryptedKey('gemini_api_key');
-    const claudeKey = getDecryptedKey('claude_api_key');
-    const openaiKey = getDecryptedKey('openai_api_key');
-
-    const result = await regenerateAISectionMain({
+    return await regenerateAISectionMain({
       sectionId,
       sectionTitle,
       currentContent,
       stats,
       instructions,
       options,
-      apiKey,
-      claudeKey,
-      openaiKey
-    });
-    return result;
+      ...getStoredApiKeys()
+    }, undefined, controller.signal);
   } catch (error) {
     return { success: false, error: error.message };
+  } finally {
+    activeSectionAbortControllers.delete(controller);
   }
 });
 
 // IPC Handler: Write file
+const WRITABLE_PROJECT_FILES = ['readme.md', '.gitignore'];
 ipcMain.handle('write-file', async (event, { filePath, content }) => {
   try {
-    fs.writeFileSync(filePath, content, 'utf8');
+    if (!selectedProjectFolder || typeof filePath !== 'string' || typeof content !== 'string') {
+      return { success: false, error: 'Write not allowed: no project folder selected.' };
+    }
+    const target = path.resolve(filePath);
+    const sameDir = path.dirname(target).toLowerCase() === selectedProjectFolder.toLowerCase();
+    if (!sameDir || !WRITABLE_PROJECT_FILES.includes(path.basename(target).toLowerCase())) {
+      return { success: false, error: 'Write not allowed: only README.md and .gitignore in the selected project folder can be written.' };
+    }
+    if (fs.existsSync(target) && fs.lstatSync(target).isSymbolicLink()) {
+      return { success: false, error: 'Write not allowed: target is a symbolic link.' };
+    }
+    fs.writeFileSync(target, content, 'utf8');
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };

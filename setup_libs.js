@@ -17,6 +17,10 @@ const filesToCopy = [
   {
     src: path.join(__dirname, 'node_modules', 'mermaid', 'dist', 'mermaid.min.js'),
     dest: path.join(libsDir, 'mermaid.min.js')
+  },
+  {
+    src: path.join(__dirname, 'node_modules', 'dompurify', 'dist', 'purify.min.js'),
+    dest: path.join(libsDir, 'purify.min.js')
   }
 ];
 

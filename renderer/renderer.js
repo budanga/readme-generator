@@ -161,9 +161,15 @@ if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: false,
     theme: 'neutral',
-    securityLevel: 'loose',
+    securityLevel: 'strict',
     logLevel: 5
   });
+}
+
+// Sanitize rendered markdown HTML (AI output may be steered by prompt injection from scanned files)
+function sanitizeHtml(html) {
+  if (!window.DOMPurify) return '';
+  return DOMPurify.sanitize(html, { FORBID_TAGS: ['style', 'form'] });
 }
 
 // Custom Marked Renderer for Mermaid diagram integration
@@ -184,7 +190,7 @@ if (window.marked) {
         }
         
         if (lang === 'mermaid') {
-          return `<pre class="mermaid-diagram-code" style="display:none;">${text}</pre><div class="mermaid-preview-container"></div>`;
+          return `<pre class="mermaid-diagram-code" style="display:none;">${text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre><div class="mermaid-preview-container"></div>`;
         }
         return false; // use default code renderer
       }
@@ -228,8 +234,8 @@ async function loadSettings() {
   const style = localStorage.getItem('gemini_ai_style') || 'balanced';
   const ollamaUrl = localStorage.getItem('ollama_url') || 'http://localhost:11434';
   const ollamaModel = localStorage.getItem('ollama_model') || '';
-  const claudeModel = localStorage.getItem('claude_model') || 'claude-sonnet-4-5';
-  const openaiModel = localStorage.getItem('openai_model') || 'gpt-4o';
+  const claudeModel = localStorage.getItem('claude_model') || 'claude-sonnet-5-5';
+  const openaiModel = localStorage.getItem('openai_model') || 'gpt-6.1-sol';
   const theme = localStorage.getItem('app_theme') || 'dark-theme';
   const customInstructions = localStorage.getItem('gemini_custom_instructions') || '';
   const customInstructionsEnabled = localStorage.getItem('gemini_custom_instructions_enabled') !== 'false';
@@ -237,12 +243,15 @@ async function loadSettings() {
   elements.settingsAiProvider.value = provider;
   elements.settingsApiKey.value = apiKey;
   elements.settingsApiModel.value = model;
+  if (!elements.settingsApiModel.value) elements.settingsApiModel.value = 'gemini-3.5-flash';
   elements.settingsAiStyle.value = style;
   elements.settingsOllamaUrl.value = ollamaUrl;
   elements.settingsClaudeKey.value = claudeKey;
   elements.settingsClaudeModel.value = claudeModel;
+  if (!elements.settingsClaudeModel.value) elements.settingsClaudeModel.value = 'claude-sonnet-5-5';
   elements.settingsOpenaiKey.value = openaiKey;
   elements.settingsOpenaiModel.value = openaiModel;
+  if (!elements.settingsOpenaiModel.value) elements.settingsOpenaiModel.value = 'gpt-6.1-sol';
   
   state.customInstructions = customInstructions;
   state.customInstructionsEnabled = customInstructionsEnabled;
@@ -805,7 +814,13 @@ function generateReadmeContent() {
       fileRow.style.display = 'flex';
       fileRow.style.justifyContent = 'space-between';
       fileRow.style.width = '100%';
-      fileRow.innerHTML = `<span>${file.path}</span> <span style="color: var(--text-muted); font-size: 11px;">(${file.content.length.toLocaleString()} chars)</span>`;
+      const pathSpan = document.createElement('span');
+      pathSpan.textContent = file.path;
+      const sizeSpan = document.createElement('span');
+      sizeSpan.style.color = 'var(--text-muted)';
+      sizeSpan.style.fontSize = '11px';
+      sizeSpan.textContent = `(${file.content.length.toLocaleString()} chars)`;
+      fileRow.append(pathSpan, ' ', sizeSpan);
       elements.consentFilesList.appendChild(fileRow);
     });
   } else {
@@ -1293,7 +1308,7 @@ function renderPreview() {
   const markdown = compileMarkdown();
   
   if (window.marked) {
-    const html = marked.parse(markdown);
+    const html = sanitizeHtml(marked.parse(markdown));
     elements.previewMarkdownContainer.innerHTML = html;
     
     // Initialize Mermaid diagrams inside markdown
@@ -1322,12 +1337,17 @@ function renderPreviewMermaidDiagrams() {
     
     if (window.mermaid && previewEl) {
       const id = 'mermaid-preview-' + index + '-' + Date.now();
-      previewEl.innerHTML = `<pre class="mermaid" id="${id}">${diagramCode}</pre>`;
+      const pre = document.createElement('pre');
+      pre.className = 'mermaid';
+      pre.id = id;
+      pre.textContent = diagramCode;
+      previewEl.replaceChildren(pre);
       
       mermaid.run({ nodes: [previewEl.querySelector('.mermaid')] })
         .catch(err => {
           console.error('Failed to parse inner markdown mermaid:', err);
-          previewEl.innerHTML = `<div class="alert-item warning" style="margin:5px 0;font-size:11px;user-select:none;">Failed to render Mermaid diagram (syntax error).</div><pre style="font-size:10px;text-align:left;background:#1a1a20;color:var(--text-main);padding:8px;border-radius:4px;overflow-x:auto;user-select:text;">${diagramCode}</pre>`;
+          previewEl.innerHTML = '<div class="alert-item warning" style="margin:5px 0;font-size:11px;user-select:none;">Failed to render Mermaid diagram (syntax error).</div><pre style="font-size:10px;text-align:left;background:#1a1a20;color:var(--text-main);padding:8px;border-radius:4px;overflow-x:auto;user-select:text;"></pre>';
+          previewEl.querySelector('pre').textContent = diagramCode;
         });
     }
   });
@@ -1388,7 +1408,7 @@ async function exportAsMarkdownFile() {
 // Export as HTML
 async function exportAsHtmlFile() {
   const content = compileMarkdown();
-  const htmlContent = window.marked ? marked.parse(content) : content;
+  const htmlContent = window.marked ? sanitizeHtml(marked.parse(content)) : sanitizeHtml(content);
   
   // Wrap in boilerplate html
   const boilerplate = `<!DOCTYPE html>
@@ -1477,7 +1497,7 @@ async function exportAsHtmlFile() {
 // Export as PDF
 async function exportAsPdfFile() {
   const content = compileMarkdown();
-  const htmlContent = window.marked ? marked.parse(content) : content;
+  const htmlContent = window.marked ? sanitizeHtml(marked.parse(content)) : sanitizeHtml(content);
   
   elements.btnExportDropdown.textContent = 'Generating PDF...';
   
