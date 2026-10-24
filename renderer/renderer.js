@@ -277,9 +277,9 @@ function updateInstructionsIndicator() {
   if (state.customInstructions && state.customInstructions.trim()) {
     elements.instructionsIndicator.classList.remove('hidden');
     if (state.customInstructionsEnabled) {
-      elements.instructionsIndicator.style.backgroundColor = 'var(--success-color)';
+      elements.instructionsIndicator.style.backgroundColor = 'var(--color-ok)';
     } else {
-      elements.instructionsIndicator.style.backgroundColor = 'var(--text-muted)';
+      elements.instructionsIndicator.style.backgroundColor = 'var(--color-muted)';
     }
   } else {
     elements.instructionsIndicator.classList.add('hidden');
@@ -692,9 +692,10 @@ async function renderMermaidDiagram(diagramCode) {
   } catch (e) {
     console.error('Mermaid render error:', e);
     elements.architectureMermaid.innerHTML = `
-      <div style="font-size:12px;color:red;padding:10px;">Failed to render Mermaid diagram.</div>
-      <pre style="text-align:left;font-size:11px;">${diagramCode}</pre>
+      <div class="diagram-error">Failed to render Mermaid diagram.</div>
+      <pre class="diagram-source"></pre>
     `;
+    elements.architectureMermaid.querySelector('pre').textContent = diagramCode;
   }
 }
 
@@ -811,20 +812,18 @@ function generateReadmeContent() {
     state.stats.keyFiles.forEach(file => {
       totalChars += file.content.length;
       const fileRow = document.createElement('div');
-      fileRow.style.display = 'flex';
-      fileRow.style.justifyContent = 'space-between';
-      fileRow.style.width = '100%';
+      fileRow.className = 'manifest-row';
+      fileRow.setAttribute('role', 'listitem');
       const pathSpan = document.createElement('span');
       pathSpan.textContent = file.path;
       const sizeSpan = document.createElement('span');
-      sizeSpan.style.color = 'var(--text-muted)';
-      sizeSpan.style.fontSize = '11px';
+      sizeSpan.className = 'manifest-size';
       sizeSpan.textContent = `(${file.content.length.toLocaleString()} chars)`;
       fileRow.append(pathSpan, ' ', sizeSpan);
       elements.consentFilesList.appendChild(fileRow);
     });
   } else {
-    elements.consentFilesList.innerHTML = '<div style="color: var(--text-muted); font-style: italic;">No key files will be transmitted.</div>';
+    elements.consentFilesList.innerHTML = '<div class="manifest-empty">No key files will be transmitted.</div>';
   }
   
   elements.consentChars.textContent = `${totalChars.toLocaleString()} chars (~${Math.round(totalChars / 4).toLocaleString()} tokens)`;
@@ -867,11 +866,11 @@ async function executeReadmeGeneration() {
     switchTab('editor');
     elements.editorSectionsContainer.innerHTML = `
       <div class="loading-overlay">
-        <div class="spinner"></div>
-        <h3 id="generation-status-title">Generating README Sections using AI...</h3>
+        <div class="spinner" aria-hidden="true"></div>
+        <h3 id="generation-status-title">Generating README sections using AI…</h3>
         <p id="generation-status-desc">This may take up to a minute depending on the model and project size.</p>
-        <button id="btn-cancel-generation" class="btn btn-secondary" style="margin-top: 16px;">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="button" id="btn-cancel-generation" class="btn btn-secondary">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
@@ -994,31 +993,25 @@ function renderEditorCards() {
     card.innerHTML = `
       <div class="section-card-header">
         <div class="section-title-wrap">
-          <svg class="icon text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="4" y1="9" x2="20" y2="9"></line>
-            <line x1="4" y1="15" x2="20" y2="15"></line>
-            <line x1="10" y1="3" x2="8" y2="21"></line>
-            <line x1="16" y1="3" x2="14" y2="21"></line>
-          </svg>
-          <input type="text" class="section-title-input" value="${section.title}" data-index="${index}">
+          <input type="text" class="section-title-input" value="${section.title}" data-index="${index}" aria-label="Section title">
         </div>
         <div class="card-actions">
-          <button class="btn btn-sm btn-icon nav-arrow-btn" onclick="moveSection(${index}, -1)" title="Move Up">
+          <button type="button" class="nav-arrow-btn" onclick="moveSection(${index}, -1)" title="Move Up" aria-label="Move up">
             ▲
           </button>
-          <button class="btn btn-sm btn-icon nav-arrow-btn" onclick="moveSection(${index}, 1)" title="Move Down">
+          <button type="button" class="nav-arrow-btn" onclick="moveSection(${index}, 1)" title="Move Down" aria-label="Move down">
             ▼
           </button>
-          <button class="btn btn-sm btn-icon" onclick="copySectionContent(${index})" title="Copy Section Content">
-            <svg class="icon text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button type="button" class="btn btn-sm btn-icon" onclick="copySectionContent(${index})" title="Copy Section Content" aria-label="Copy section content">
+            <svg class="icon text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
             </svg>
           </button>
-          <button class="btn btn-sm btn-primary btn-icon-text" onclick="triggerRegenAIModal('${section.id}', '${section.title}')" title="Regenerate with AI">
+          <button type="button" class="btn btn-sm btn-secondary btn-icon-text" onclick="triggerRegenAIModal('${section.id}', '${section.title}')" title="Regenerate with AI">
             AI Regen
           </button>
-          <button class="btn btn-sm btn-danger btn-icon" style="line-height: 0; padding-bottom: 2px; display: inline-flex; align-items: center; justify-content: center; font-size: 18px;" onclick="deleteSection(${index})" title="Delete Section">
+          <button type="button" class="btn btn-sm btn-danger btn-icon btn-delete" onclick="deleteSection(${index})" title="Delete Section" aria-label="Delete section">
             &times;
           </button>
         </div>
@@ -1157,7 +1150,7 @@ window.copySectionContent = async function(index) {
       const copyBtn = card.querySelector('button[title="Copy Section Content"]');
       if (copyBtn) {
         const originalHTML = copyBtn.innerHTML;
-        copyBtn.innerHTML = '<svg class="icon text-success" style="stroke: #10b981;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+        copyBtn.innerHTML = '<svg class="icon text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>';
         setTimeout(() => { copyBtn.innerHTML = originalHTML; }, 1500);
       }
     }
@@ -1346,7 +1339,7 @@ function renderPreviewMermaidDiagrams() {
       mermaid.run({ nodes: [previewEl.querySelector('.mermaid')] })
         .catch(err => {
           console.error('Failed to parse inner markdown mermaid:', err);
-          previewEl.innerHTML = '<div class="alert-item warning" style="margin:5px 0;font-size:11px;user-select:none;">Failed to render Mermaid diagram (syntax error).</div><pre style="font-size:10px;text-align:left;background:#1a1a20;color:var(--text-main);padding:8px;border-radius:4px;overflow-x:auto;user-select:text;"></pre>';
+          previewEl.innerHTML = '<div class="diagram-error">Failed to render Mermaid diagram (syntax error).</div><pre class="diagram-source"></pre>';
           previewEl.querySelector('pre').textContent = diagramCode;
         });
     }
@@ -1631,10 +1624,10 @@ function updateHistoryViews() {
     div.innerHTML = `
       <div class="title">${item.projectName}</div>
       <div class="meta">${item.timestamp}</div>
-      <div class="meta" style="font-family:var(--font-mono);word-break:break-all;">${item.projectPath}</div>
-      <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:5px;">
-        <button class="btn btn-sm" onclick="loadHistoryItem('${item.id}')">Load</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteHistory('${item.id}')">&times;</button>
+      <div class="meta meta--path">${item.projectPath}</div>
+      <div class="history-actions">
+        <button type="button" class="btn btn-sm" onclick="loadHistoryItem('${item.id}')">Load</button>
+        <button type="button" class="btn btn-sm btn-danger btn-icon btn-delete" onclick="deleteHistory('${item.id}')" aria-label="Delete">&times;</button>
       </div>
     `;
     elements.historyList.appendChild(div);

@@ -5,59 +5,59 @@
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src *; img-src 'self' data: https://img.shields.io *;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Scan a local code project and draft its README with AI, then review, edit and export it.">
   <title>README Generator</title>
-  <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Host+Grotesk:wght@400;500&family=Atkinson+Hyperlegible+Mono:wght@400;500&display=swap"
     rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
 </head>
 
-<body class="dark-theme"> <!-- Default to dark-theme -->
+<body class="dark-theme">
   <div class="app-container">
 
-    <!-- LEFT ACTIVITY BAR (VS Code Style) -->
-    <div class="activity-bar">
+    <!-- LEFT ACTIVITY BAR -->
+    <nav class="activity-bar" aria-label="Views">
       <div class="logo-area">
-        <svg class="icon logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="icon logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
         </svg>
       </div>
       <div class="activity-items">
-        <div class="activity-item active" id="nav-dashboard" title="Dashboard">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="button" class="activity-item active" id="nav-dashboard" title="Dashboard" aria-label="Dashboard">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <rect x="3" y="3" width="7" height="7"></rect>
             <rect x="14" y="3" width="7" height="7"></rect>
             <rect x="14" y="14" width="7" height="7"></rect>
             <rect x="3" y="14" width="7" height="7"></rect>
           </svg>
-        </div>
-        <div class="activity-item" id="nav-editor" title="README Editor">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        </button>
+        <button type="button" class="activity-item" id="nav-editor" title="README Editor" aria-label="README editor">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
             <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
           </svg>
-        </div>
-        <div class="activity-item" id="nav-history" title="History & Compare">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        </button>
+        <button type="button" class="activity-item" id="nav-history" title="History & Compare" aria-label="History and compare">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="12" cy="12" r="10"></circle>
             <polyline points="12 6 12 12 16 14"></polyline>
           </svg>
-        </div>
-        <div class="activity-item" id="nav-settings" title="Settings">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        </button>
+        <button type="button" class="activity-item" id="nav-settings" title="Settings" aria-label="Settings">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="12" cy="12" r="3"></circle>
             <path
               d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
             </path>
           </svg>
-        </div>
+        </button>
       </div>
       <div class="user-area">
-        <!-- Theme toggle shortcut -->
-        <div id="theme-toggle" class="theme-btn" title="Toggle Light/Dark Theme">
-          <svg class="icon sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="button" id="theme-toggle" class="theme-btn" title="Toggle Light/Dark Theme" aria-label="Toggle light and dark theme">
+          <svg class="icon sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="12" cy="12" r="5"></circle>
             <line x1="12" y1="1" x2="12" y2="3"></line>
             <line x1="12" y1="21" x2="12" y2="23"></line>
@@ -68,16 +68,16 @@
             <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
             <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
           </svg>
-        </div>
+        </button>
       </div>
-    </div>
+    </nav>
 
     <!-- SECONDARY SIDEBAR (Contextual) -->
-    <div class="sidebar">
+    <aside class="sidebar">
       <div class="sidebar-header">
         <h3 id="sidebar-title">Project Explorer</h3>
-        <button class="sidebar-collapse-btn" id="btn-select-project" title="Open Project Directory">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="button" class="sidebar-collapse-btn" id="btn-select-project" title="Open Project Directory">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
           </svg>
           <span>Open Folder</span>
@@ -88,13 +88,13 @@
         <!-- Dashboard Sidebar: Project Tree & Alerts -->
         <div id="sidebar-dashboard" class="sidebar-pane">
           <div class="sidebar-section">
-            <h4>Warnings & Alerts</h4>
+            <h4>Warnings and alerts</h4>
             <div id="alerts-container">
               <p class="empty-placeholder">Select a project folder to start scanning.</p>
             </div>
           </div>
           <div class="sidebar-section">
-            <h4>Project Tree</h4>
+            <h4>Project tree</h4>
             <div id="tree-container" class="tree-view">
               <p class="empty-placeholder">No folder loaded.</p>
             </div>
@@ -105,9 +105,9 @@
         <div id="sidebar-editor" class="sidebar-pane hidden">
           <div class="sidebar-section">
             <div class="section-actions-header">
-              <h4>README Sections</h4>
-              <button class="btn btn-sm btn-icon" id="btn-add-section" title="Add Custom Section">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <h4>README sections</h4>
+              <button type="button" class="btn btn-sm btn-icon" id="btn-add-section" title="Add Custom Section" aria-label="Add custom section">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
@@ -122,7 +122,7 @@
         <!-- History Sidebar -->
         <div id="sidebar-history" class="sidebar-pane hidden">
           <div class="sidebar-section">
-            <h4>Recent Generations</h4>
+            <h4>Recent generations</h4>
             <div id="history-list" class="history-nav">
               <p class="empty-placeholder">No history found.</p>
             </div>
@@ -134,33 +134,33 @@
           <div class="sidebar-section">
             <h4>Preferences</h4>
             <div class="menu-list">
-              <div class="menu-item active">API Keys & AI Model</div>
+              <div class="menu-item active">API Keys &amp; AI Model</div>
               <div class="menu-item">Theme Settings</div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </aside>
 
     <!-- MAIN VIEW AREA -->
-    <div class="main-content">
+    <main class="main-content">
 
       <!-- TOP STATUS BAR -->
       <header class="top-bar">
         <div class="current-path-info">
-          <span class="label">Project:</span>
+          <span class="label">Project</span>
           <span class="path-value" id="current-project-name">None loaded</span>
           <span class="path-full" id="current-project-path"></span>
         </div>
         <div class="actions">
-          <button class="btn btn-primary btn-icon-text" id="btn-trigger-scan" disabled>
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button type="button" class="btn btn-secondary btn-icon-text" id="btn-trigger-scan" disabled>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
             </svg>
             <span>Scan Project</span>
           </button>
-          <button class="btn btn-accent btn-icon-text" id="btn-generate-ai" disabled>
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button type="button" class="btn btn-primary btn-icon-text" id="btn-generate-ai" disabled>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
               <polyline points="14 2 14 8 20 8"></polyline>
             </svg>
@@ -177,95 +177,93 @@
 
           <!-- Welcome Screen (if no folder opened) -->
           <div id="dashboard-welcome" class="welcome-screen">
-            <svg class="welcome-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-              <polyline points="10 9 9 9 8 9"></polyline>
-            </svg>
             <h2>README Generator</h2>
             <p>Automatically analyze local software projects and build production-ready, beautiful READMEs with AI.</p>
-            <button class="btn btn-large btn-primary" id="btn-welcome-select">
+            <button type="button" class="btn btn-large btn-primary" id="btn-welcome-select">
               Select Project Directory
             </button>
           </div>
 
           <!-- Loading overlay -->
-          <div id="dashboard-loading" class="loading-overlay hidden">
-            <div class="spinner"></div>
-            <h3>Scanning Project Structure...</h3>
+          <div id="dashboard-loading" class="loading-overlay hidden" role="status">
+            <div class="spinner" aria-hidden="true"></div>
+            <h3>Scanning project structure…</h3>
             <p id="scan-progress-status">Analyzing files, lines of code, frameworks, and packages.</p>
-            <button class="btn btn-secondary" id="btn-cancel-scan" style="margin-top: 15px;">Cancel Scan</button>
+            <button type="button" class="btn btn-secondary" id="btn-cancel-scan">Cancel Scan</button>
           </div>
 
           <!-- Main Dashboard Stats Panel -->
           <div id="dashboard-stats" class="dashboard-stats-grid hidden">
 
-            <!-- Summary Row -->
-            <div class="card summary-card colspan-3">
-              <div class="stats-mini-grid">
-                <div class="stat-item">
-                  <span class="stat-label">Lines of Code</span>
-                  <span class="stat-value" id="stat-loc">0</span>
+            <!-- Scan readings: one figure leads -->
+            <section class="readings" aria-label="Scan summary">
+              <div class="reading reading--lead">
+                <span class="stat-label">Lines of code</span>
+                <span class="reading-value num" id="stat-loc">0</span>
+              </div>
+              <dl class="reading-list">
+                <div class="reading">
+                  <dt class="stat-label">Total files</dt>
+                  <dd class="reading-value reading-value--sm num" id="stat-files">0</dd>
                 </div>
-                <div class="stat-item">
-                  <span class="stat-label">Total Files</span>
-                  <span class="stat-value" id="stat-files">0</span>
+                <div class="reading">
+                  <dt class="stat-label">Primary language</dt>
+                  <dd class="reading-word" id="stat-lang">None</dd>
                 </div>
-                <div class="stat-item">
-                  <span class="stat-label">Primary Language</span>
-                  <span class="stat-value" id="stat-lang">None</span>
+                <div class="reading">
+                  <dt class="stat-label">Framework</dt>
+                  <dd class="reading-word" id="stat-framework">None</dd>
                 </div>
-                <div class="stat-item">
-                  <span class="stat-label">Framework</span>
-                  <span class="stat-value" id="stat-framework">None</span>
-                </div>
-              </div>
-            </div>
+              </dl>
+            </section>
 
-            <!-- Language Breakdown -->
-            <div class="card colspan-1">
-              <h3>Languages Used</h3>
-              <div class="languages-chart-container" id="languages-chart">
-                <!-- Dynamic bars go here -->
-              </div>
-            </div>
-
-            <!-- Dependencies -->
-            <div class="card colspan-2">
-              <h3>Dependencies & Package Info</h3>
-              <div class="info-row">
-                <strong>Package Manager:</strong> <span id="stat-package-manager">None</span>
-              </div>
-              <div class="info-row">
-                <strong>Entry Point:</strong> <span id="stat-entry-point">Not detected</span>
-              </div>
-              <div class="dependencies-list" id="stat-dependencies-list">
-                <!-- List values -->
-              </div>
-            </div>
-
-            <!-- Largest Files & Complexity -->
-            <div class="card colspan-1">
-              <h3>Project Complexity</h3>
-              <div class="complexity-gauge">
-                <div class="complexity-score" id="stat-complexity">Low</div>
-                <p>Estimated based on LOC, file hierarchy and dependencies.</p>
-              </div>
-              <h3 style="margin-top: 20px;">Largest Files</h3>
-              <ul class="file-list-simple" id="stat-largest-files">
-                <!-- Large files -->
-              </ul>
-            </div>
-
-            <!-- Architecture Diagram Panel -->
-            <div class="card colspan-2">
-              <h3>Architecture Diagram (Draft)</h3>
+            <!-- Architecture Diagram: the draft the README will carry -->
+            <section class="panel panel--architecture">
+              <h3>Architecture diagram (draft)</h3>
               <div class="mermaid-diagram-viewer" id="architecture-mermaid">
                 <!-- Rendered Mermaid Diagram -->
               </div>
+            </section>
+
+            <!-- Rail: languages, complexity, largest files -->
+            <div class="dashboard-rail">
+              <section class="panel">
+                <h3>Languages used</h3>
+                <div class="languages-chart-container" id="languages-chart">
+                  <!-- Dynamic bars go here -->
+                </div>
+              </section>
+
+              <section class="panel">
+                <h3>Project complexity</h3>
+                <div class="complexity-gauge">
+                  <div class="complexity-score" id="stat-complexity">Low</div>
+                  <p>Estimated based on LOC, file hierarchy and dependencies.</p>
+                </div>
+                <h3 class="panel-subhead">Largest files</h3>
+                <ul class="file-list-simple" id="stat-largest-files">
+                  <!-- Large files -->
+                </ul>
+              </section>
             </div>
+
+            <!-- Dependencies -->
+            <section class="panel panel--deps">
+              <h3>Dependencies and package info</h3>
+              <dl class="info-rows">
+                <div class="info-row">
+                  <dt>Package manager</dt>
+                  <dd id="stat-package-manager">None</dd>
+                </div>
+                <div class="info-row">
+                  <dt>Entry point</dt>
+                  <dd id="stat-entry-point">Not detected</dd>
+                </div>
+              </dl>
+              <div class="dependencies-list" id="stat-dependencies-list">
+                <!-- List values -->
+              </div>
+            </section>
 
           </div>
         </div>
@@ -274,59 +272,66 @@
         <div id="view-editor" class="view-pane">
           <div class="editor-workspace">
 
-            <!-- Left Side: Custom Section Editor Cards -->
-            <div class="editor-cards-column" style="overflow: hidden !important; padding-right: 0;">
-              <div id="thinking-toggle-container" style="margin-bottom: 12px; display: none; flex-shrink: 0; padding-right: 5px;">
-                <button id="btn-toggle-thinking" class="btn btn-secondary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+            <!-- Left Side: Section Editor Cards -->
+            <div class="editor-cards-column">
+              <div id="thinking-toggle-container" class="thinking-toggle">
+                <button type="button" id="btn-toggle-thinking" class="btn btn-secondary btn-block">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                     <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
                     <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
                   </svg>
                   <span>Show AI Thoughts</span>
                 </button>
               </div>
-              <div id="editor-sections-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; width: 100%; padding-right: 5px;">
+              <div id="editor-sections-container" class="section-stack">
                 <!-- Cards for each README section will be dynamically rendered here -->
               </div>
-              <div id="editor-thinking-container" style="flex: 1; overflow-y: auto; display: none; width: 100%; background-color: rgba(30, 30, 30, 0.7); border: 1px solid var(--border-color); border-radius: 6px; padding: 15px; font-family: var(--font-mono); font-size: 13px; color: #d4d4d4; white-space: pre-wrap; box-sizing: border-box; line-height: 1.5;">
+              <div id="editor-thinking-container" class="thinking-log">
               </div>
             </div>
 
-            <!-- Right Side: Live Markdown Preview (styled like GitHub) -->
+            <!-- Right Side: Live Markdown Preview, set as the README sheet -->
             <div class="editor-preview-column">
               <div class="preview-header">
-                <h3>Markdown Live Preview</h3>
+                <h3>Markdown live preview</h3>
                 <div class="preview-actions">
-                  <button class="btn btn-secondary btn-icon-text" id="btn-custom-instructions"
+                  <button type="button" class="btn btn-secondary btn-icon-text" id="btn-custom-instructions"
                     title="AI Custom Instructions">
-                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                       <path d="M12 20h9"></path>
                       <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                     </svg>
                     <span>AI Instructions</span>
                     <span class="indicator-dot hidden" id="instructions-indicator"></span>
                   </button>
-                  <button class="btn btn-secondary" id="btn-copy-clipboard">
+                  <button type="button" class="btn btn-secondary" id="btn-copy-clipboard">
                     Copy Markdown
                   </button>
                   <div class="dropdown-wrapper">
-                    <button class="btn btn-primary" id="btn-export-dropdown">Export...</button>
+                    <button type="button" class="btn btn-secondary" id="btn-export-dropdown">Export…</button>
                     <div class="dropdown-menu hidden" id="export-dropdown-menu">
-                      <div class="dropdown-item" id="export-file-readme">Save to Project Root (README.md)</div>
-                      <div class="dropdown-item" id="export-file-markdown">Save As Markdown (.md)...</div>
-                      <div class="dropdown-item" id="export-file-html">Export as HTML (.html)...</div>
-                      <div class="dropdown-item" id="export-file-pdf">Export as PDF (.pdf)...</div>
+                      <button type="button" class="dropdown-item" id="export-file-readme">Save to Project Root (README.md)</button>
+                      <button type="button" class="dropdown-item" id="export-file-markdown">Save As Markdown (.md)…</button>
+                      <button type="button" class="dropdown-item" id="export-file-html">Export as HTML (.html)…</button>
+                      <button type="button" class="dropdown-item" id="export-file-pdf">Export as PDF (.pdf)…</button>
                     </div>
                   </div>
                 </div>
               </div>
 
               <!-- Preview HTML Container -->
-              <div class="preview-body markdown-body" id="preview-markdown-container">
-                <p class="empty-placeholder">Select project and generate README to view preview.</p>
+              <div class="preview-desk">
+                <div class="preview-body markdown-body" id="preview-markdown-container">
+                  <p class="empty-placeholder">Select project and generate README to view preview.</p>
+                </div>
               </div>
-              <div class="ai-warning-footer" style="padding: 8px 12px; background-color: var(--bg-sidebar); border-top: 1px solid var(--border-color); font-size: 11px; color: var(--text-muted); text-align: center; flex-shrink: 0;">
-                ⚠️ AI can generate errors or invent information. Please review the generated README before using it.
+              <div class="ai-warning-footer">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <span>AI can generate errors or invent information. Please review the generated README before using it.</span>
               </div>
             </div>
 
@@ -337,24 +342,24 @@
         <div id="view-history" class="view-pane">
           <div class="history-layout">
             <div class="history-controls">
-              <h3>Compare Generations</h3>
+              <h3>Compare generations</h3>
               <p>Select two versions to view a side-by-side diff comparison.</p>
               <div class="compare-dropdown-group">
-                <select id="compare-old-select" class="form-control">
-                  <option value="">-- Choose Base Version --</option>
+                <select id="compare-old-select" class="form-control" aria-label="Base version">
+                  <option value="">Choose base version</option>
                 </select>
                 <span>vs</span>
-                <select id="compare-new-select" class="form-control">
-                  <option value="">-- Choose Current Version --</option>
+                <select id="compare-new-select" class="form-control" aria-label="Current version">
+                  <option value="">Choose current version</option>
                 </select>
-                <button class="btn btn-primary" id="btn-run-compare">Compare</button>
+                <button type="button" class="btn btn-primary" id="btn-run-compare">Compare</button>
               </div>
             </div>
 
             <!-- Comparison Diff Viewer -->
             <div class="diff-viewer-panel">
               <div class="diff-container" id="diff-output-container">
-                <p class="empty-placeholder">Select versions above and click "Compare" to view line diffs.</p>
+                <p class="empty-placeholder">Select versions above and click “Compare” to view line diffs.</p>
               </div>
             </div>
           </div>
@@ -366,7 +371,7 @@
             <h2>Settings</h2>
 
             <div class="settings-group">
-              <h3>AI Configuration</h3>
+              <h3>AI configuration</h3>
 
               <div class="form-group">
                 <label for="settings-ai-provider">AI Provider</label>
@@ -382,7 +387,7 @@
               <div id="settings-group-gemini" class="provider-group">
                 <div class="form-group">
                   <label for="settings-api-key">Gemini API Key</label>
-                  <input type="password" id="settings-api-key" placeholder="Enter your Gemini API key here..."
+                  <input type="password" id="settings-api-key" placeholder="Enter your Gemini API key here…"
                     class="form-control">
                   <span class="help-text">Leave blank to force <strong>Offline Template Mode (Mock)</strong>.</span>
                 </div>
@@ -390,7 +395,7 @@
                 <div class="form-group">
                   <label for="settings-api-model">Gemini Model</label>
                   <select id="settings-api-model" class="form-control">
-                    <option value="gemini-3.5-flash">Gemini 3.5 Flash (Fast & High Capability)</option>
+                    <option value="gemini-3.5-flash">Gemini 3.5 Flash (Fast &amp; High Capability)</option>
                     <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (Preview, High)</option>
                     <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep Code Reasoning)</option>
                     <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast, Recommended)</option>
@@ -402,7 +407,7 @@
               <div id="settings-group-claude" class="provider-group hidden">
                 <div class="form-group">
                   <label for="settings-claude-key">Anthropic API Key</label>
-                  <input type="password" id="settings-claude-key" placeholder="Enter your Anthropic API key here..."
+                  <input type="password" id="settings-claude-key" placeholder="Enter your Anthropic API key here…"
                     class="form-control">
                 </div>
                 <div class="form-group">
@@ -419,7 +424,7 @@
               <div id="settings-group-openai" class="provider-group hidden">
                 <div class="form-group">
                   <label for="settings-openai-key">OpenAI API Key</label>
-                  <input type="password" id="settings-openai-key" placeholder="Enter your OpenAI API key here..."
+                  <input type="password" id="settings-openai-key" placeholder="Enter your OpenAI API key here…"
                     class="form-control">
                 </div>
                 <div class="form-group">
@@ -427,7 +432,7 @@
                   <select id="settings-openai-model" class="form-control">
                     <option value="gpt-6-astra">GPT-6 Astra (Most Capable)</option>
                     <option value="gpt-6.1-sol">GPT-6.1 Sol (Recommended)</option>
-                    <option value="gpt-6-luna">GPT-6 Luna (Fast & Cheap)</option>
+                    <option value="gpt-6-luna">GPT-6 Luna (Fast &amp; Cheap)</option>
                   </select>
                 </div>
               </div>
@@ -441,12 +446,12 @@
 
                 <div class="form-group">
                   <label for="settings-ollama-model">Ollama Model</label>
-                  <div style="display: flex; gap: 8px;">
-                    <select id="settings-ollama-model" class="form-control" style="flex: 1;">
-                      <option value="">No models found...</option>
+                  <div class="field-row">
+                    <select id="settings-ollama-model" class="form-control">
+                      <option value="">No models found…</option>
                     </select>
-                    <button class="btn btn-secondary btn-icon" id="btn-refresh-ollama" title="Refresh Models">
-                      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <button type="button" class="btn btn-secondary btn-icon" id="btn-refresh-ollama" title="Refresh Models" aria-label="Refresh models">
+                      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <polyline points="23 4 23 10 17 10"></polyline>
                         <polyline points="1 20 1 14 7 14"></polyline>
                         <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
@@ -457,215 +462,201 @@
                 </div>
               </div>
 
-              <div class="form-group" style="margin-top: -10px; margin-bottom: 20px;">
-                <span class="help-text">
-                  <strong>Recommendation:</strong> For best results, use a model with at least <strong>8k - 64k context
-                    length</strong> to properly analyze the entire repository structure and files.
-                </span>
-              </div>
+              <p class="help-text form-note">
+                <strong>Recommendation:</strong> For best results, use a model with at least <strong>8k to 64k context
+                  length</strong> to properly analyze the entire repository structure and files.
+              </p>
 
               <div class="form-group">
                 <label for="settings-ai-style">AI Writing Style</label>
                 <select id="settings-ai-style" class="form-control">
                   <option value="balanced">Balanced (Standard Detail)</option>
-                  <option value="concise">Concise (Brief & Direct)</option>
-                  <option value="detailed">Detailed (Comprehensive & Technical)</option>
+                  <option value="concise">Concise (Brief &amp; Direct)</option>
+                  <option value="detailed">Detailed (Comprehensive &amp; Technical)</option>
                 </select>
               </div>
             </div>
 
             <div class="settings-group">
-              <h3>Application Settings</h3>
+              <h3>Application settings</h3>
               <div class="form-group">
-                <label>Theme Mode</label>
-                <div class="theme-selection-grid">
-                  <div class="theme-card active" id="theme-card-dark">
-                    <div class="color-swatch sw-dark"></div>
+                <span class="form-label" id="theme-mode-label">Theme Mode</span>
+                <div class="theme-selection-grid" role="group" aria-labelledby="theme-mode-label">
+                  <button type="button" class="theme-card active" id="theme-card-dark">
+                    <span class="color-swatch sw-dark" aria-hidden="true"></span>
                     <span>Dark Theme</span>
-                  </div>
-                  <div class="theme-card" id="theme-card-light">
-                    <div class="color-swatch sw-light"></div>
+                  </button>
+                  <button type="button" class="theme-card" id="theme-card-light">
+                    <span class="color-swatch sw-light" aria-hidden="true"></span>
                     <span>Light Theme</span>
-                  </div>
+                  </button>
                 </div>
               </div>
             </div>
 
             <div class="settings-actions">
-              <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
-              <button class="btn btn-secondary" id="btn-reset-settings">Reset Defaults</button>
+              <button type="button" class="btn btn-primary" id="btn-save-settings">Save Settings</button>
+              <button type="button" class="btn btn-secondary" id="btn-reset-settings">Reset Defaults</button>
             </div>
           </div>
         </div>
 
       </div>
-    </div>
+    </main>
 
   </div>
 
   <!-- MODAL DIALOGS -->
-  <!-- AI Custom Prompt Instructions Modal -->
+  <!-- AI Section Regeneration Modal -->
   <div class="modal-backdrop hidden" id="modal-regen-instruction">
-    <div class="modal-box">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-regen-heading">
       <div class="modal-header">
-        <h3>Regenerate Section with AI</h3>
-        <button class="btn-close" id="modal-regen-close">&times;</button>
+        <h3 id="modal-regen-heading">Regenerate section with AI</h3>
+        <button type="button" class="btn-close" id="modal-regen-close" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
         <p>Input custom instructions for the AI to rewrite the section <strong id="modal-regen-section-title">Section
             Name</strong>.</p>
         <div class="form-group">
-          <textarea id="modal-regen-prompt-input" rows="4" class="form-control"
-            placeholder="Example: Make this section more detailed, add a code block showing how to set environment variables, or rewrite in a more friendly tone."></textarea>
+          <textarea id="modal-regen-prompt-input" rows="4" class="form-control" aria-label="Instructions for this section"
+            placeholder="Make this section more detailed, add a code block showing how to set environment variables, or rewrite in a more friendly tone."></textarea>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="modal-regen-cancel">Cancel</button>
-        <button class="btn btn-primary" id="modal-regen-submit">Regenerate</button>
+        <button type="button" class="btn btn-secondary" id="modal-regen-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="modal-regen-submit">Regenerate</button>
       </div>
     </div>
   </div>
 
   <!-- AI Global Custom Instructions Modal -->
   <div class="modal-backdrop hidden" id="modal-custom-instructions">
-    <div class="modal-box">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-custom-heading">
       <div class="modal-header">
-        <h3>AI Custom Instructions</h3>
-        <button class="btn-close" id="modal-custom-instructions-close">&times;</button>
+        <h3 id="modal-custom-heading">AI custom instructions</h3>
+        <button type="button" class="btn-close" id="modal-custom-instructions-close" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
-        <p style="margin-bottom: 12px; font-size: 13px; color: var(--text-muted);">
+        <p class="modal-lead">
           Provide global instructions, tone guidelines, or specific formatting rules for the AI to apply when generating
           the README.
         </p>
-        <div class="form-group" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" id="modal-custom-instructions-enable"
-            style="cursor: pointer; width: 16px; height: 16px;">
-          <label for="modal-custom-instructions-enable"
-            style="font-size: 13px; font-weight: 500; cursor: pointer; user-select: none;">Enable Custom
-            Instructions</label>
+        <div class="check-row">
+          <input type="checkbox" id="modal-custom-instructions-enable">
+          <label for="modal-custom-instructions-enable">Enable Custom Instructions</label>
         </div>
         <div class="form-group">
-          <textarea id="modal-custom-instructions-input" rows="6" class="form-control"
-            placeholder="Examples:&#10;- Write the README completely in Spanish.&#10;- Keep sections brief and use a friendly tone.&#10;- Do not include any HTML elements or badges.&#10;- Add dynamic emojis in headers."></textarea>
+          <textarea id="modal-custom-instructions-input" rows="6" class="form-control" aria-label="Custom instructions"
+            placeholder="Write the README completely in Spanish.&#10;Keep sections brief and use a friendly tone.&#10;Do not include any HTML elements or badges.&#10;Add dynamic emojis in headers."></textarea>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="modal-custom-instructions-cancel">Cancel</button>
-        <button class="btn btn-primary" id="modal-custom-instructions-save">Save Instructions</button>
+        <button type="button" class="btn btn-secondary" id="modal-custom-instructions-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="modal-custom-instructions-save">Save Instructions</button>
       </div>
     </div>
   </div>
 
   <!-- Custom Section Modal -->
   <div class="modal-backdrop hidden" id="modal-add-section">
-    <div class="modal-box">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-add-heading">
       <div class="modal-header">
-        <h3>Add Custom Section</h3>
-        <button class="btn-close" id="modal-add-close">&times;</button>
+        <h3 id="modal-add-heading">Add custom section</h3>
+        <button type="button" class="btn-close" id="modal-add-close" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
           <label for="modal-add-title-input">Section Title</label>
           <input type="text" id="modal-add-title-input" class="form-control"
-            placeholder="e.g. Troubleshooting, Benchmarks, Changelog">
+            placeholder="Troubleshooting">
         </div>
         <div class="form-group">
           <label for="modal-add-content-input">Initial Content (Markdown)</label>
           <textarea id="modal-add-content-input" rows="5" class="form-control"
-            placeholder="Enter markdown content here..."></textarea>
+            placeholder="Enter markdown content here…"></textarea>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="modal-add-cancel">Cancel</button>
-        <button class="btn btn-primary" id="modal-add-submit">Add Section</button>
+        <button type="button" class="btn btn-secondary" id="modal-add-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="modal-add-submit">Add Section</button>
       </div>
     </div>
   </div>
 
   <!-- Error Details Modal -->
   <div class="modal-backdrop hidden" id="modal-error">
-    <div class="modal-box" style="width: 600px; max-width: 95%;">
-      <div class="modal-header" style="border-bottom: 2px solid var(--danger-color);">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="var(--danger-color)" stroke-width="2"
-            style="width: 20px; height: 20px;">
+    <div class="modal-box modal-box--wide" role="alertdialog" aria-modal="true" aria-labelledby="modal-error-title">
+      <div class="modal-header modal-header--danger">
+        <div class="modal-title-row">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
             <line x1="12" y1="9" x2="12" y2="13"></line>
             <line x1="12" y1="17" x2="12.01" y2="17"></line>
           </svg>
-          <h3 id="modal-error-title" style="margin: 0; color: var(--danger-color); font-weight: 700;">Error Details</h3>
+          <h3 id="modal-error-title">Error details</h3>
         </div>
-        <button class="btn-close" id="modal-error-close">&times;</button>
+        <button type="button" class="btn-close" id="modal-error-close" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
-        <p id="modal-error-message" style="margin: 0; font-weight: 600; line-height: 1.4; color: var(--text-main);"></p>
-        <div class="form-group" style="display: flex; flex-direction: column; gap: 5px;">
-          <label style="font-size: 12px; font-weight: 600; color: var(--text-muted);">Technical details:</label>
-          <textarea id="modal-error-details" readonly rows="8" class="form-control"
-            style="font-family: var(--font-mono); font-size: 11px; background-color: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-main); padding: 10px; border-radius: 4px; resize: vertical; white-space: pre; overflow-x: auto; width: 100%; box-sizing: border-box;"></textarea>
+        <p id="modal-error-message" class="modal-message"></p>
+        <div class="form-group">
+          <label for="modal-error-details">Technical details</label>
+          <textarea id="modal-error-details" readonly rows="8" class="form-control form-control--code"></textarea>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary btn-icon-text" id="modal-error-copy"
-          style="display: flex; align-items: center; gap: 6px;">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            style="width: 16px; height: 16px;">
+        <button type="button" class="btn btn-secondary btn-icon-text" id="modal-error-copy">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
           </svg>
           <span id="modal-error-copy-text">Copy Error</span>
         </button>
-        <button class="btn btn-primary" id="modal-error-close-btn">Close</button>
+        <button type="button" class="btn btn-primary" id="modal-error-close-btn">Close</button>
       </div>
     </div>
   </div>
 
   <!-- Review & Consent Modal -->
   <div class="modal-backdrop hidden" id="modal-consent">
-    <div class="modal-box" style="width: 650px; max-width: 95%;">
+    <div class="modal-box modal-box--wide" role="dialog" aria-modal="true" aria-labelledby="modal-consent-heading">
       <div class="modal-header">
-        <h3 style="margin: 0; font-weight: 700;">Review Transmitted Data</h3>
-        <button class="btn-close" id="modal-consent-close">&times;</button>
+        <h3 id="modal-consent-heading">Review transmitted data</h3>
+        <button type="button" class="btn-close" id="modal-consent-close" aria-label="Close">&times;</button>
       </div>
-      <div class="modal-body" style="display: flex; flex-direction: column; gap: 15px;">
-        <p style="margin: 0; font-size: 13px; line-height: 1.4;">You are about to transmit project metadata and file
+      <div class="modal-body">
+        <p class="modal-lead">You are about to transmit project metadata and file
           contents to an external AI service. Please review the details below:</p>
 
-        <div
-          style="background-color: var(--bg-input); border: 1px solid var(--border-color); padding: 12px; border-radius: 6px; display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
-          <div><strong>Provider:</strong> <span id="consent-provider">-</span></div>
-          <div><strong>Model:</strong> <span id="consent-model">-</span></div>
-          <div><strong>Total Characters to Send:</strong> <span id="consent-chars">-</span></div>
-        </div>
+        <dl class="readout">
+          <div><dt>Provider</dt><dd id="consent-provider">-</dd></div>
+          <div><dt>Model</dt><dd id="consent-model">-</dd></div>
+          <div><dt>Total characters to send</dt><dd id="consent-chars" class="num">-</dd></div>
+        </dl>
 
-        <div class="form-group" style="display: flex; flex-direction: column; gap: 5px;">
-          <label style="font-size: 13px; font-weight: 600; color: var(--text-muted);">Source Files Content to be
-            Sent:</label>
-          <div id="consent-files-list"
-            style="max-height: 150px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px; padding: 8px; background-color: var(--bg-input); display: flex; flex-direction: column; gap: 4px; font-family: var(--font-mono); font-size: 12px;">
+        <div class="form-group">
+          <span class="form-label" id="consent-files-label">Source files content to be sent</span>
+          <div id="consent-files-list" class="file-manifest" role="list" aria-labelledby="consent-files-label">
             <!-- files go here -->
           </div>
         </div>
 
-        <div
-          style="font-size: 12px; color: var(--text-muted); line-height: 1.4; display: flex; gap: 8px; align-items: flex-start; background: rgba(224, 180, 0, 0.1); border: 1px solid rgb(224, 180, 0); padding: 10px; border-radius: 6px;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="rgb(224, 180, 0)" stroke-width="2"
-            style="width: 24px; height: 24px; flex-shrink: 0;">
+        <div class="notice">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="12" cy="12" r="10"></circle>
             <line x1="12" y1="8" x2="12" y2="12"></line>
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
-          <div>
+          <p>
             <strong>Privacy Notice:</strong> These files are transmitted over HTTPS to the selected third-party API
             provider. Standard data retention policies of the selected provider apply. Ensure you have the rights to
             transmit this code.
-          </div>
+          </p>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="modal-consent-cancel">Cancel</button>
-        <button class="btn btn-primary" id="modal-consent-confirm">Confirm & Generate</button>
+        <button type="button" class="btn btn-secondary" id="modal-consent-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="modal-consent-confirm">Confirm and Generate</button>
       </div>
     </div>
   </div>
