@@ -32,3 +32,4 @@ yarn-error.log*
 .agents/
 renderer/assets/icon.ico
 .hallmark/
+.claude/
